@@ -44,7 +44,12 @@ app.get('/health', (req, res) => {
 
 // This starts the email scanning worker
 // It runs alongside the server waiting for jobs
-require('./workers/emailWorker');
+try {
+  require('./workers/emailWorker');
+} catch (err) {
+  console.error('Email worker failed to start:', err.message);
+  console.log('Server will continue without email scanning worker');
+}
 
 // ─── START SERVER ────────────────────────────────────
 
