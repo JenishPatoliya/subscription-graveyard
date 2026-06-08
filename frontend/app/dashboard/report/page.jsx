@@ -35,7 +35,7 @@ export default function ReportPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#070709' }}>
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 20px 48px' }}>
+      <div style={{ maxWidth: 1140, margin: '0 auto', padding: '0 20px 48px' }}>
         <Navbar user={user} />
 
         <h2 style={{

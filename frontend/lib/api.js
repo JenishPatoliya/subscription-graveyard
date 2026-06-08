@@ -87,11 +87,6 @@ export const subscriptionsAPI = {
     return response.data
   },
 
-  addManual: async (data) => {
-    const response = await api.post('/api/subscriptions/manual', data)
-    return response.data
-  },
-
   updateStatus: async (id, userMarked) => {
     const response = await api.patch(`/api/subscriptions/${id}`, {
       userMarked

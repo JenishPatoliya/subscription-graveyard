@@ -20,13 +20,7 @@ export default function DashboardPage() {
   const [selected, setSelected] = useState(null)
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
-  const [showManual, setShowManual] = useState(false)
-  const [manualForm, setManualForm] = useState({
-    serviceName: '',
-    amount: '',
-    category: 'Other',
-    billingDate: ''
-  })
+
 
   // Load everything on mount
   useEffect(() => {
@@ -77,17 +71,7 @@ export default function DashboardPage() {
     )
   }
 
-  // Add manual subscription
-  const handleAddManual = async () => {
-    try {
-      const data = await subscriptionsAPI.addManual(manualForm)
-      setSubscriptions(prev => [...prev, data.subscription])
-      setShowManual(false)
-      setManualForm({ serviceName: '', amount: '', category: 'Other', billingDate: '' })
-    } catch (err) {
-      console.error('Failed to add manual:', err)
-    }
-  }
+
 
   return (
     <div style={{
@@ -167,144 +151,56 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Filter tabs + Add manual button */}
+        {/* Filter tabs */}
         <div style={{
           display: 'flex',
           gap: 8,
           marginBottom: 20,
           alignItems: 'center',
-          justifyContent: 'space-between'
+          flexWrap: 'wrap'
         }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {[
-              { k: 'all', l: 'All Subscriptions', c: subscriptions.length },
-              { k: 'no-receipt', l: '⚠️ No Recent Receipt', c: noRecentReceipt.length },
-              { k: 'active', l: '✅ Recently Active', c: subscriptions.filter(s => s.receiptStatus === 'recent').length }
-            ].map(t => (
-              <button
-                key={t.k}
-                onClick={() => setFilter(t.k)}
-                style={{
-                  background: filter === t.k ? 'rgba(255,68,85,0.1)' : 'transparent',
-                  border: filter === t.k ? '1px solid rgba(255,68,85,0.3)' : '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: 12,
-                  color: filter === t.k ? '#FF4455' : 'rgba(255,255,255,0.35)',
-                  padding: '9px 18px',
-                  fontSize: 11,
-                  cursor: 'pointer',
-                  fontFamily: 'DM Mono',
-                  display: 'flex',
-                  gap: 8,
-                  alignItems: 'center',
-                  fontWeight: filter === t.k ? 700 : 400,
-                  transition: 'all 0.2s'
-                }}
-              >
-                {t.l}
-                <span style={{
-                  background: filter === t.k ? 'rgba(255,68,85,0.2)' : 'rgba(255,255,255,0.06)',
-                  borderRadius: 6,
-                  padding: '1px 8px',
-                  fontSize: 10,
-                  color: filter === t.k ? '#FF4455' : 'rgba(255,255,255,0.3)'
-                }}>
-                  {t.c}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {/* Add manual button */}
-          <button
-            onClick={() => setShowManual(!showManual)}
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 12,
-              color: 'rgba(255,255,255,0.4)',
-              padding: '9px 16px',
-              fontSize: 11,
-              cursor: 'pointer',
-              fontFamily: 'DM Mono'
-            }}
-          >
-            + Add Manual
-          </button>
-        </div>
-
-        {/* Manual add form */}
-        {showManual && (
-          <div style={{
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 16,
-            padding: '20px',
-            marginBottom: 20,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 12,
-            alignItems: 'end'
-          }}>
-            {[
-              { label: 'Service Name', key: 'serviceName', placeholder: 'Gym Membership' },
-              { label: 'Amount ₹', key: 'amount', placeholder: '2000' },
-              { label: 'Category', key: 'category', placeholder: 'Health' },
-              { label: 'Next Billing Date', key: 'billingDate', type: 'date' }
-            ].map(f => (
-              <div key={f.key}>
-                <div style={{
-                  fontSize: 10,
-                  color: 'rgba(255,255,255,0.3)',
-                  marginBottom: 6,
-                  letterSpacing: 1
-                }}>
-                  {f.label.toUpperCase()}
-                </div>
-                <input
-                  type={f.type || 'text'}
-                  placeholder={f.placeholder}
-                  value={manualForm[f.key]}
-                  onChange={e => setManualForm(prev => ({
-                    ...prev,
-                    [f.key]: e.target.value
-                  }))}
-                  style={{
-                    width: '100%',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 10,
-                    color: '#fff',
-                    padding: '10px 14px',
-                    fontSize: 13,
-                    fontFamily: 'DM Mono',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-            ))}
+          {[
+            { k: 'all', l: 'All Subscriptions', c: subscriptions.length },
+            { k: 'no-receipt', l: '⚠️ No Recent Receipt', c: noRecentReceipt.length },
+            { k: 'active', l: '✅ Recently Active', c: subscriptions.filter(s => s.receiptStatus === 'recent').length }
+          ].map(t => (
             <button
-              onClick={handleAddManual}
+              key={t.k}
+              onClick={() => setFilter(t.k)}
               style={{
-                background: 'linear-gradient(135deg, #FF4455, #FF8866)',
-                border: 'none',
-                borderRadius: 10,
-                color: '#fff',
-                padding: '10px',
-                fontSize: 13,
-                fontWeight: 700,
+                background: filter === t.k ? 'rgba(255,68,85,0.1)' : 'transparent',
+                border: filter === t.k ? '1px solid rgba(255,68,85,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 12,
+                color: filter === t.k ? '#FF4455' : 'rgba(255,255,255,0.35)',
+                padding: '9px 18px',
+                fontSize: 11,
                 cursor: 'pointer',
-                fontFamily: "'Syne', sans-serif"
+                fontFamily: 'DM Mono',
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                fontWeight: filter === t.k ? 700 : 400,
+                transition: 'all 0.2s'
               }}
             >
-              Add →
+              {t.l}
+              <span style={{
+                background: filter === t.k ? 'rgba(255,68,85,0.2)' : 'rgba(255,255,255,0.06)',
+                borderRadius: 6,
+                padding: '1px 8px',
+                fontSize: 10,
+                color: filter === t.k ? '#FF4455' : 'rgba(255,255,255,0.3)'
+              }}>
+                {t.c}
+              </span>
             </button>
-          </div>
-        )}
+          ))}
+        </div>
 
         {/* Main grid */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: selected ? '1fr 400px' : 'repeat(3, 1fr)',
+          gridTemplateColumns: selected ? '1fr 400px' : '1fr',
           gap: 14,
           paddingBottom: 48,
           transition: 'grid-template-columns 0.3s'
@@ -313,7 +209,7 @@ export default function DashboardPage() {
           {/* Cards */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: selected ? '1fr' : 'repeat(3, 1fr)',
+            gridTemplateColumns: selected ? 'repeat(auto-fill, minmax(240px, 1fr))' : 'repeat(auto-fill, minmax(300px, 1fr))',
             gap: 12,
             alignContent: 'start'
           }}>
