@@ -69,25 +69,24 @@ const createGmailClient = (accessToken, refreshToken) => {
 // Searches Gmail for emails that look like receipts
 // This query only returns billing related emails
 // Never returns personal emails
-const searchReceiptEmails = async (gmail, maxResults = 500) => {
+const searchReceiptEmails = async (gmail) => {
   
-  // This is like typing in Gmail search bar
-  // Only returns emails with these words in subject
-  const query = [
-    'subject:(receipt OR invoice OR subscription OR',
-    'renewal OR charged OR billing OR payment OR',
-    '"order confirmation" OR "purchase confirmation")'
-  ].join(' ');
+  // Simplified query to catch more emails
+  const query = 'subject:(receipt OR invoice OR payment OR subscription OR renewal OR charged OR billing) newer_than:6m'
+
+  console.log('Gmail search query:', query)
 
   const response = await gmail.users.messages.list({
-    userId: 'me',  // me means the authenticated user
+    userId: 'me',
     q: query,
-    maxResults     // Limit to prevent too many API calls
-  });
+    maxResults: 50
+  })
 
-  // Return array of message IDs or empty array
-  return response.data.messages || [];
-};
+  const messages = response.data.messages || []
+  console.log('Emails found by Gmail search:', messages.length)
+
+  return messages
+}
 
 // ─── GET EMAIL CONTENT ───────────────────────────────
 
@@ -95,29 +94,25 @@ const searchReceiptEmails = async (gmail, maxResults = 500) => {
 // We only get metadata headers and snippet
 // We do NOT get full email body to protect privacy
 const getEmailContent = async (gmail, messageId) => {
-  
   const response = await gmail.users.messages.get({
     userId: 'me',
     id: messageId,
-    // metadata format only gets headers
-    // much faster than getting full body
     format: 'metadata',
-    // Only get these specific headers
     metadataHeaders: ['Subject', 'From', 'Date']
-  });
+  })
 
-  const headers = response.data.payload.headers;
+  const headers = response.data.payload.headers
   
-  // Extract each header value
-  const subject = headers.find(h => h.name === 'Subject')?.value || '';
-  const from = headers.find(h => h.name === 'From')?.value || '';
-  const date = headers.find(h => h.name === 'Date')?.value || '';
+  const subject = headers.find(h => h.name === 'Subject')?.value || ''
+  const from = headers.find(h => h.name === 'From')?.value || ''
+  const date = headers.find(h => h.name === 'Date')?.value || ''
   
-  // Snippet is first 100 characters of email body
+  // Snippet is first 200 characters
   // Enough for AI to understand context
-  const snippet = response.data.snippet || '';
+  // We never read full email body
+  const snippet = response.data.snippet || ''
 
-  return { subject, from, date, snippet, messageId };
+  return { subject, from, date, snippet, messageId }
 };
 
 // Export all functions

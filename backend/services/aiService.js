@@ -1,147 +1,150 @@
-// backend/services/aiService.js
+const Groq = require('groq-sdk')
+require('dotenv').config()
 
-const Groq = require('groq-sdk');
-require('dotenv').config();
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
-// Initialize Groq client with your API key
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
-});
+// Known Indian subscription services
+// AI uses this as reference
+const INDIAN_SERVICES = [
+  'Netflix', 'Spotify', 'Amazon Prime', 'Hotstar',
+  'YouTube Premium', 'Google One', 'iCloud',
+  'ChatGPT', 'Canva', 'Adobe', 'Notion',
+  'NordVPN', 'LinkedIn', 'GitHub', 'Dropbox',
+  'Microsoft 365', 'Zoom', 'Slack', 'Figma',
+  'Midjourney', 'Claude', 'Grammarly',
+  'Coursera', 'Udemy', 'Swiggy One',
+  'Zomato Pro', 'Jio', 'Airtel', 'BSNL',
+  'MX Player', 'SonyLIV', 'ZEE5', 'Voot'
+]
 
-// ─── CANCEL URLS DATABASE ────────────────────────────
-
-// These are direct links to cancellation pages
-// User clicks these to cancel their subscriptions
-// We never cancel automatically on their behalf
 const CANCEL_URLS = {
-  'canva': 'https://www.canva.com/settings/purchase',
-  'spotify': 'https://www.spotify.com/account/subscription',
   'netflix': 'https://www.netflix.com/cancelplan',
+  'spotify': 'https://www.spotify.com/account/subscription',
+  'amazon': 'https://www.amazon.in/mc/pipelines/cancellation',
+  'hotstar': 'https://www.hotstar.com/in/subscribe',
+  'youtube': 'https://www.youtube.com/paid_memberships',
+  'google': 'https://myaccount.google.com/payments-and-subscriptions',
+  'icloud': 'https://support.apple.com/billing',
+  'chatgpt': 'https://chat.openai.com/account/billing',
+  'openai': 'https://platform.openai.com/account/billing',
+  'canva': 'https://www.canva.com/settings/purchase',
   'adobe': 'https://account.adobe.com/plans',
   'notion': 'https://www.notion.so/profile/billing',
   'nordvpn': 'https://my.nordaccount.com/subscriptions',
-  'chatgpt': 'https://chat.openai.com/account/billing',
-  'openai': 'https://platform.openai.com/account/billing',
-  'google': 'https://myaccount.google.com/payments-and-subscriptions',
-  'microsoft': 'https://account.microsoft.com/services',
-  'amazon': 'https://www.amazon.in/mc/pipelines/cancellation',
   'linkedin': 'https://www.linkedin.com/premium/cancel',
   'github': 'https://github.com/settings/billing',
   'dropbox': 'https://www.dropbox.com/account/plan',
+  'microsoft': 'https://account.microsoft.com/services',
   'zoom': 'https://zoom.us/billing',
-  'youtube': 'https://www.youtube.com/paid_memberships',
-  'hotstar': 'https://www.hotstar.com/in/subscribe',
+  'slack': 'https://slack.com/account/settings',
+  'figma': 'https://www.figma.com/settings',
+  'grammarly': 'https://account.grammarly.com/subscription',
+  'coursera': 'https://www.coursera.org/account-settings',
+  'udemy': 'https://www.udemy.com/account-settings',
+  'sonyliv': 'https://www.sonyliv.com/settings',
   'zee5': 'https://www.zee5.com/subscription',
-  'sonyliv': 'https://www.sonyliv.com/settings'
-};
+  'mxplayer': 'https://www.mxplayer.in/subscription'
+}
 
-// Find cancel URL for a service
 const getCancelUrl = (serviceName) => {
-  const lower = serviceName.toLowerCase();
+  if (!serviceName) return null
+  const lower = serviceName.toLowerCase()
   for (const [key, url] of Object.entries(CANCEL_URLS)) {
-    if (lower.includes(key)) return url;
+    if (lower.includes(key)) return url
   }
-  return null;
-};
+  return null
+}
 
-// ─── CATEGORY DETECTION ──────────────────────────────
-
-// Automatically categorize subscription by name
-const getCategoryFromName = (serviceName) => {
-  const lower = serviceName.toLowerCase();
-  
-  if (['canva', 'adobe', 'figma', 'sketch'].some(s => lower.includes(s)))
-    return 'Design';
-  if (['spotify', 'apple music', 'youtube music'].some(s => lower.includes(s)))
-    return 'Music';
-  if (['netflix', 'hotstar', 'prime video', 'zee5', 'sony'].some(s => lower.includes(s)))
-    return 'Entertainment';
-  if (['chatgpt', 'openai', 'claude', 'gemini', 'midjourney'].some(s => lower.includes(s)))
-    return 'AI Tools';
-  if (['notion', 'evernote', 'todoist', 'asana', 'slack'].some(s => lower.includes(s)))
-    return 'Productivity';
+const getCategory = (serviceName) => {
+  if (!serviceName) return 'Other'
+  const lower = serviceName.toLowerCase()
+  if (['canva', 'adobe', 'figma'].some(s => lower.includes(s)))
+    return 'Design'
+  if (['spotify', 'apple music', 'youtube music', 'mxplayer'].some(s => lower.includes(s)))
+    return 'Music'
+  if (['netflix', 'hotstar', 'prime video', 'zee5', 'sony', 'voot'].some(s => lower.includes(s)))
+    return 'Entertainment'
+  if (['chatgpt', 'openai', 'claude', 'gemini', 'midjourney', 'grammarly'].some(s => lower.includes(s)))
+    return 'AI Tools'
+  if (['notion', 'evernote', 'todoist', 'slack', 'zoom'].some(s => lower.includes(s)))
+    return 'Productivity'
   if (['nordvpn', 'expressvpn', 'surfshark'].some(s => lower.includes(s)))
-    return 'Security';
-  if (['github', 'gitlab', 'vercel', 'aws'].some(s => lower.includes(s)))
-    return 'Developer Tools';
-    
-  return 'Other';
-};
-
-// ─── PARSE EMAIL WITH AI ─────────────────────────────
+    return 'Security'
+  if (['github', 'gitlab', 'vercel', 'aws', 'digitalocean'].some(s => lower.includes(s)))
+    return 'Developer Tools'
+  if (['linkedin', 'coursera', 'udemy'].some(s => lower.includes(s)))
+    return 'Career'
+  if (['google one', 'icloud', 'dropbox'].some(s => lower.includes(s)))
+    return 'Storage'
+  return 'Other'
+}
 
 const parseEmailForSubscription = async (emailData) => {
-  const { subject, from, date, snippet } = emailData;
+  const { subject, from, date, snippet } = emailData
 
-  // Write clear prompt for AI
-  // Tell it exactly what format to return
   const prompt = `
-    You are analyzing an email to extract subscription payment info.
-    
-    Return ONLY a valid JSON object.
-    No markdown. No backticks. No extra text.
-    Just the JSON object.
-    
-    Email Subject: ${subject}
-    Email From: ${from}
-    Email Date: ${date}
-    Email Preview: ${snippet}
-    
-    Return exactly this structure:
-    {
-      "isSubscription": true or false,
-      "serviceName": "name of service or null",
-      "amount": number with no symbols or null,
-      "currency": "INR or USD or null",
-      "billingCycle": "monthly or yearly or null",
-      "receiptDate": "YYYY-MM-DD or null",
-      "renewalDate": "YYYY-MM-DD or null"
-    }
-    
-    Rules:
-    - isSubscription must be true only if this 
-      is clearly a payment receipt or invoice
-    - Extract the service name exactly as shown
-    - Amount must be a number only like 499 not ₹499
-    - If amount is in USD multiply by 83 for INR
-    - Return null for any uncertain field
-  `;
+You are analyzing an email to find subscription payment info.
+
+Email Subject: ${subject}
+Email From: ${from}
+Email Date: ${date}
+Email Preview: ${snippet}
+
+Known subscription services for reference:
+${INDIAN_SERVICES.join(', ')}
+
+Return ONLY a JSON object. No extra text. No markdown.
+
+{
+  "isSubscription": true or false,
+  "serviceName": "exact service name or null",
+  "amount": number only no symbols or null,
+  "currency": "INR or USD or null",
+  "billingCycle": "monthly or yearly or null",
+  "receiptDate": "YYYY-MM-DD or null",
+  "renewalDate": "YYYY-MM-DD or null"
+}
+
+Rules:
+- isSubscription true only if this is a payment receipt or renewal notice
+- Extract exact service name as it appears
+- Amount must be number only like 499 not Rs.499 or ₹499
+- If amount is in USD multiply by 83 for INR equivalent
+- receiptDate is when payment was made
+- renewalDate is when next payment is due
+- Return null for uncertain fields
+- If this is just a promotional email not a receipt return isSubscription false
+`
 
   try {
-    // Call Groq API
     const response = await groq.chat.completions.create({
-      model: 'llama3-8b-8192',  // Fast free model
+      model: 'llama-3.1-8b-instant',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 300,  // Short response enough for JSON
-      temperature: 0.1  // Low temperature = more consistent
-    });
+      max_tokens: 200,
+      temperature: 0.1
+    })
 
-    // Get the text response
-    const text = response.choices[0].message.content.trim();
-
-    // Clean any markdown formatting AI might add
+    const text = response.choices[0].message.content.trim()
+    
+    // Clean any markdown
     const cleaned = text
       .replace(/```json/g, '')
       .replace(/```/g, '')
-      .trim();
+      .trim()
 
-    // Parse JSON
-    const parsed = JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned)
 
-    // Add category and cancel URL if subscription found
     if (parsed.isSubscription && parsed.serviceName) {
-      parsed.category = getCategoryFromName(parsed.serviceName);
-      parsed.cancelUrl = getCancelUrl(parsed.serviceName);
+      parsed.category = getCategory(parsed.serviceName)
+      parsed.cancelUrl = getCancelUrl(parsed.serviceName)
     }
 
-    return parsed;
+    return parsed
 
   } catch (err) {
-    // If AI fails or JSON parse fails
-    // Return false so email is skipped
-    console.error('AI parsing error:', err.message);
-    return { isSubscription: false };
+    console.error('AI parsing error:', err.message)
+    return { isSubscription: false }
   }
-};
+}
 
-module.exports = { parseEmailForSubscription };
+module.exports = { parseEmailForSubscription }

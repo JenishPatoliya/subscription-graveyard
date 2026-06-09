@@ -42,7 +42,7 @@ export default function ScanningPage() {
         })
 
         // If scan complete redirect to dashboard
-        if (data.scanComplete && data.subscriptionsFound > 0) {
+        if (data.scanComplete) {
           clearInterval(statusInterval)
           clearInterval(progressInterval)
           setTimeout(() => router.push('/dashboard'), 1000)

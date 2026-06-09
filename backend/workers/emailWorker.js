@@ -1,228 +1,238 @@
-// backend/workers/emailWorker.js
+const { Worker } = require('bullmq')
+const { Redis } = require('ioredis')
+const supabase = require('../config/supabase')
+const gmailService = require('../services/gmailService')
+const { parseEmailForSubscription } = require('../services/aiService')
+require('dotenv').config()
 
-const { Worker } = require('bullmq');
-const supabase = require('../config/supabase');
-const gmailService = require('../services/gmailService');
-const { parseEmailForSubscription } = require('../services/aiService');
-require('dotenv').config();
-
-// Same Redis connection as queue
-const connection = {
+const connection = new Redis({
   host: process.env.UPSTASH_REDIS_HOST,
-  port: process.env.UPSTASH_REDIS_PORT,
+  port: parseInt(process.env.UPSTASH_REDIS_PORT || '6379', 10),
   password: process.env.UPSTASH_REDIS_PASSWORD,
-  tls: {}
-};
+  tls: {},
+  maxRetriesPerRequest: null
+})
 
-// Helper to pause execution
-// Used to avoid hitting Gmail API too fast
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+connection.on('connect', () => {
+  console.log('Redis connected successfully')
+})
 
-// ─── MAIN JOB PROCESSOR ──────────────────────────────
+connection.on('error', (err) => {
+  console.log('Redis connection error:', err.message)
+})
 
-// This function runs for every job in queue
+const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+
 const processJob = async (job) => {
-  const { userId, gmailAddress } = job.data;
-  console.log(`Starting scan for ${gmailAddress}`);
+  const { userId, gmailAddress } = job.data
+  console.log(`Starting real Gmail scan for ${gmailAddress}`)
 
-  try {
-    // ── Get Gmail account from database ──
-    const { data: gmailAccount } = await supabase
-      .from('gmail_accounts')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('gmail_address', gmailAddress)
-      .single();
+  // Step 1 — Get stored tokens
+  const { data: gmailAccount } = await supabase
+    .from('gmail_accounts')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('gmail_address', gmailAddress)
+    .single()
 
-    if (!gmailAccount) {
-      throw new Error('Gmail account not found in database');
-    }
+  if (!gmailAccount) {
+    throw new Error('Gmail account not found')
+  }
 
-    // ── Create Gmail client with stored tokens ──
-    const gmail = gmailService.createGmailClient(
-      gmailAccount.access_token,
-      gmailAccount.refresh_token
-    );
+  // Step 2 — Create Gmail client with tokens
+  const gmail = gmailService.createGmailClient(
+    gmailAccount.access_token,
+    gmailAccount.refresh_token
+  )
 
-    // ── Search for receipt emails ──
-    const messages = await gmailService.searchReceiptEmails(gmail, 500);
-    console.log(`Found ${messages.length} potential receipt emails`);
+  // Step 3 — Search Gmail
+  // Gmail filters on their servers
+  // Only returns billing emails
+  const messages = await gmailService.searchReceiptEmails(gmail)
+  
+  console.log(`Processing ${messages.length} emails for ${gmailAddress}`)
 
-    let emailsScanned = 0;
+  let emailsScanned = 0
+  let subscriptionsFound = 0
 
-    // ── Process emails in batches of 10 ──
-    // Processing all at once crashes the app
-    const batchSize = 10;
-    
-    for (let i = 0; i < messages.length; i += batchSize) {
-      const batch = messages.slice(i, i + batchSize);
+  // Step 4 — Process in batches of 5
+  // Small batches = safe and reliable
+  const batchSize = 5
 
-      // Process batch emails simultaneously
-      await Promise.all(batch.map(async (message) => {
-        try {
-          // ── Skip already processed emails ──
-          // gmail_message_id is unique for each email
-          const { data: existingReceipt } = await supabase
-            .from('receipts')
-            .select('id')
-            .eq('gmail_message_id', message.id)
-            .single();
+  for (let i = 0; i < messages.length; i += batchSize) {
+    const batch = messages.slice(i, i + batchSize)
 
-          // Already processed this email before — skip it
-          if (existingReceipt) return;
+    for (const message of batch) {
+      try {
+        // Skip if already processed this email
+        const { data: existing } = await supabase
+          .from('receipts')
+          .select('id')
+          .eq('gmail_message_id', message.id)
+          .single()
 
-          // ── Get email content ──
-          const emailData = await gmailService.getEmailContent(
-            gmail,
-            message.id
-          );
+        if (existing) {
+          emailsScanned++
+          continue
+        }
 
-          // ── Send to AI for parsing ──
-          const result = await parseEmailForSubscription(emailData);
+        // Get email content
+        // Only gets subject, sender, date, snippet
+        // Never reads full email body
+        const emailData = await gmailService.getEmailContent(
+          gmail,
+          message.id
+        )
 
-          // Only save if AI found subscription info
-          if (result.isSubscription && result.serviceName && result.amount) {
-            
-            // ── Check if subscription already exists ──
-            // Same service might have multiple receipts
-            const { data: existingSub } = await supabase
+        // After getting email content
+        console.log('---')
+        console.log('Subject:', emailData.subject)
+        console.log('Snippet:', emailData.snippet)
+
+        // Send to AI for parsing
+        const result = await parseEmailForSubscription(emailData)
+
+        // After AI parsing
+        console.log('AI Result:', JSON.stringify(result))
+        console.log('---')
+
+        if (result.isSubscription && result.serviceName && result.amount) {
+          
+          // Check if subscription already exists
+          const { data: existingSub } = await supabase
+            .from('subscriptions')
+            .select('*')
+            .eq('user_id', userId)
+            .ilike('service_name', `%${result.serviceName}%`)
+            .single()
+
+          if (existingSub) {
+            // Update existing subscription
+            await supabase
               .from('subscriptions')
-              .select('*')
-              .eq('user_id', userId)
-              .ilike('service_name', result.serviceName)
-              .single();
+              .update({
+                total_spent: Number(existingSub.total_spent) + Number(result.amount),
+                total_receipts: existingSub.total_receipts + 1,
+                last_receipt_date: result.receiptDate || existingSub.last_receipt_date,
+                next_renewal_date: result.renewalDate || existingSub.next_renewal_date,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existingSub.id)
 
-            if (existingSub) {
-              // ── Update existing subscription ──
-              await supabase
-                .from('subscriptions')
-                .update({
-                  total_spent: existingSub.total_spent + result.amount,
-                  total_receipts: existingSub.total_receipts + 1,
-                  // Update last receipt date if newer
-                  last_receipt_date: result.receiptDate > existingSub.last_receipt_date
-                    ? result.receiptDate
-                    : existingSub.last_receipt_date,
-                  next_renewal_date: result.renewalDate || existingSub.next_renewal_date,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', existingSub.id);
+            // Save receipt record
+            await supabase.from('receipts').insert({
+              user_id: userId,
+              subscription_id: existingSub.id,
+              gmail_message_id: message.id,
+              amount: result.amount,
+              receipt_date: result.receiptDate,
+              raw_subject: emailData.subject
+            })
 
-              // Save this receipt
+          } else {
+            // Create new subscription
+            const { data: newSub } = await supabase
+              .from('subscriptions')
+              .insert({
+                user_id: userId,
+                source_gmail: gmailAddress,
+                service_name: result.serviceName,
+                amount: result.amount,
+                currency: result.currency || 'INR',
+                category: result.category,
+                first_receipt_date: result.receiptDate,
+                last_receipt_date: result.receiptDate,
+                next_renewal_date: result.renewalDate,
+                total_receipts: 1,
+                total_spent: result.amount,
+                cancel_url: result.cancelUrl
+              })
+              .select()
+              .single()
+
+            if (newSub) {
+              // Save receipt
               await supabase.from('receipts').insert({
                 user_id: userId,
-                subscription_id: existingSub.id,
+                subscription_id: newSub.id,
                 gmail_message_id: message.id,
                 amount: result.amount,
                 receipt_date: result.receiptDate,
                 raw_subject: emailData.subject
-              });
+              })
 
-            } else {
-              // ── Create new subscription ──
-              const { data: newSub } = await supabase
-                .from('subscriptions')
-                .insert({
-                  user_id: userId,
-                  source_gmail: gmailAddress,
-                  service_name: result.serviceName,
-                  amount: result.amount,
-                  currency: result.currency || 'INR',
-                  category: result.category,
-                  first_receipt_date: result.receiptDate,
-                  last_receipt_date: result.receiptDate,
-                  next_renewal_date: result.renewalDate,
-                  total_receipts: 1,
-                  total_spent: result.amount,
-                  cancel_url: result.cancelUrl
-                })
-                .select()
-                .single();
+              // Schedule renewal alert
+              if (result.renewalDate) {
+                const alertDate = new Date(result.renewalDate)
+                alertDate.setDate(alertDate.getDate() - 3)
 
-              if (newSub) {
-                // Save first receipt
-                await supabase.from('receipts').insert({
+                await supabase.from('alerts').insert({
                   user_id: userId,
                   subscription_id: newSub.id,
-                  gmail_message_id: message.id,
-                  amount: result.amount,
-                  receipt_date: result.receiptDate,
-                  raw_subject: emailData.subject
-                });
-
-                // Schedule renewal alert if date found
-                if (result.renewalDate) {
-                  const alertDate = new Date(result.renewalDate);
-                  alertDate.setDate(alertDate.getDate() - 3);
-
-                  await supabase.from('alerts').insert({
-                    user_id: userId,
-                    subscription_id: newSub.id,
-                    alert_date: alertDate.toISOString().split('T')[0],
-                    days_before: 3
-                  });
-                }
+                  alert_date: alertDate.toISOString().split('T')[0],
+                  days_before: 3
+                })
               }
+
+              subscriptionsFound++
+              console.log(`New subscription found: ${result.serviceName} ₹${result.amount}`)
             }
           }
-
-          emailsScanned++;
-
-        } catch (err) {
-          // Don't let one email failure stop entire scan
-          console.error('Error processing email:', err.message);
         }
-      }));
 
-      // Update progress in database
-      // Frontend polls this to show progress
-      await supabase
-        .from('gmail_accounts')
-        .update({ emails_scanned: emailsScanned })
-        .eq('id', gmailAccount.id);
+        emailsScanned++
 
-      // Pause 1 second between batches
-      // Prevents hitting Gmail API rate limits
-      await sleep(1000);
+      } catch (err) {
+        // One email failing should not stop entire scan
+        console.error(`Error processing email:`, err.message)
+        emailsScanned++
+      }
+
+      // Small delay between each email
+      // Prevents hitting Gmail API too fast
+      await sleep(300)
     }
 
-    // ── Mark scan as complete ──
+    // Update progress after each batch
     await supabase
       .from('gmail_accounts')
-      .update({
-        last_scanned: new Date().toISOString(),
-        emails_scanned: emailsScanned
-      })
-      .eq('id', gmailAccount.id);
+      .update({ emails_scanned: emailsScanned })
+      .eq('id', gmailAccount.id)
 
-    console.log(`Scan complete for ${gmailAddress}`);
-    console.log(`Emails scanned: ${emailsScanned}`);
+    console.log(`Progress: ${emailsScanned}/${messages.length} emails processed`)
 
-  } catch (err) {
-    console.error('Worker job failed:', err);
-    throw err;  // Throwing causes BullMQ to retry
+    // Pause between batches
+    await sleep(500)
   }
-};
 
-// ─── START WORKER ────────────────────────────────────
+  // Mark scan complete
+  await supabase
+    .from('gmail_accounts')
+    .update({
+      last_scanned: new Date().toISOString(),
+      emails_scanned: emailsScanned
+    })
+    .eq('id', gmailAccount.id)
 
-// Worker listens to email-scan queue
-// concurrency 2 means process 2 jobs at same time
+  console.log(`Scan complete!`)
+  console.log(`Emails processed: ${emailsScanned}`)
+  console.log(`New subscriptions found: ${subscriptionsFound}`)
+}
+
+// Start worker
 const worker = new Worker('email-scan', processJob, {
   connection,
-  concurrency: 2
-});
+  concurrency: 1
+})
 
-// Log success
 worker.on('completed', job => {
-  console.log(`Job ${job.id} completed successfully`);
-});
+  console.log(`Scan job ${job.id} completed`)
+})
 
-// Log failures
 worker.on('failed', (job, err) => {
-  console.error(`Job ${job.id} failed:`, err.message);
-});
+  console.error(`Scan job ${job.id} failed:`, err.message)
+})
 
-console.log('Email scan worker is running...');
+console.log('Email worker running and waiting for jobs...')
 
-module.exports = worker;
+module.exports = worker

@@ -20,6 +20,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [rescanning, setRescanning] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -63,6 +64,19 @@ export default function SettingsPage() {
       setGmailAccounts(prev => prev.filter(a => a.gmail_address !== gmail))
     } catch (err) {
       console.error('Disconnect failed:', err)
+    }
+  }
+
+  const handleRescan = async () => {
+    try {
+      setRescanning(true)
+      await gmailAPI.rescan()
+      alert('Rescan started! Check dashboard in 2 minutes.')
+    } catch (err) {
+      console.error('Rescan failed:', err)
+      alert('Rescan failed: ' + err.message)
+    } finally {
+      setRescanning(false)
     }
   }
 
@@ -195,8 +209,9 @@ export default function SettingsPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <GhostButton
-                    label="Rescan"
-                    onClick={() => gmailAPI.rescan()}
+                    label={rescanning ? 'Scanning...' : 'Rescan'}
+                    onClick={handleRescan}
+                    disabled={rescanning}
                     small
                   />
                   <DangerButton
@@ -400,16 +415,16 @@ function SettingsCard({ title, children }) {
   )
 }
 
-function GhostButton({ label, onClick, small }) {
+function GhostButton({ label, onClick, small, disabled }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} disabled={disabled} style={{
       background: 'rgba(255,255,255,0.05)',
       border: '1px solid rgba(255,255,255,0.1)',
       borderRadius: 10,
-      color: 'rgba(255,255,255,0.5)',
+      color: disabled ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.5)',
       padding: small ? '7px 14px' : '10px 18px',
       fontSize: small ? 11 : 13,
-      cursor: 'pointer',
+      cursor: disabled ? 'not-allowed' : 'pointer',
       fontFamily: 'DM Mono'
     }}>
       {label}
