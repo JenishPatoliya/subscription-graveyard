@@ -159,6 +159,38 @@ export default function ScanningPage() {
         }}>
           This runs in background. Your inbox is not being stored.
         </div>
+
+        {progress >= 95 && (
+          <button
+            onClick={() => router.push('/dashboard')}
+            style={{
+              marginTop: 16,
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 10,
+              color: 'rgba(255,255,255,0.6)',
+              padding: '8px 16px',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: "'Syne', sans-serif",
+              transition: 'all 0.2s',
+              display: 'inline-block'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'
+              e.currentTarget.style.color = '#fff'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+              e.currentTarget.style.color = 'rgba(255,255,255,0.6)'
+            }}
+          >
+            Go to Dashboard →
+          </button>
+        )}
       </div>
 
       {/* Live stats */}

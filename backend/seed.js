@@ -13,7 +13,7 @@ async function seed() {
   const { data: user, error: userError } = await supabase
     .from('users')
     .upsert({
-      name: 'Raj Kumar',
+      name: 'Jenish',
       email: 'demo@subscriptiongraveyard.com',
       password: hashedPassword,
       plan: 'free',

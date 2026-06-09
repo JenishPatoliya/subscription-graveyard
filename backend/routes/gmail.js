@@ -27,99 +27,125 @@ router.get('/auth-url', protect, (req, res) => {
 // This is NOT called by frontend — Google calls it directly
 router.get('/callback', async (req, res) => {
   try {
-    // Google sends code, state (userId), or error
-    const { code, state: userId, error } = req.query;
+    const { code, state: userId, error } = req.query
 
-    // User denied access
+    console.log('OAuth callback received')
+    console.log('User ID from state:', userId)
+    console.log('Code exists:', !!code)
+    console.log('Error:', error)
+
     if (error) {
+      console.log('OAuth error:', error)
       return res.redirect(
         `${process.env.FRONTEND_URL}/connect-gmail?error=access_denied`
-      );
+      )
     }
 
-    // ── Exchange code for tokens ──
-    // Code is single use and expires quickly
-    const tokens = await gmailService.getTokensFromCode(code);
+    if (!code) {
+      console.log('No code received')
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/connect-gmail?error=no_code`
+      )
+    }
 
-    // ── Get Gmail address ──
-    // Create client with new tokens
+    if (!userId) {
+      console.log('No user ID in state')
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/connect-gmail?error=no_user`
+      )
+    }
+
+    // Exchange code for tokens
+    console.log('Exchanging code for tokens...')
+    const tokens = await gmailService.getTokensFromCode(code)
+    console.log('Tokens received:', {
+      access_token: !!tokens.access_token,
+      refresh_token: !!tokens.refresh_token
+    })
+
+    if (!tokens.access_token) {
+      console.log('No access token received')
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/connect-gmail?error=no_token`
+      )
+    }
+
+    // Get Gmail address
     const gmail = gmailService.createGmailClient(
       tokens.access_token,
       tokens.refresh_token
-    );
+    )
 
-    // Get the email address of connected Gmail
-    const profile = await gmail.users.getProfile({ userId: 'me' });
-    const gmailAddress = profile.data.emailAddress;
+    console.log('Getting Gmail profile...')
+    const profile = await gmail.users.getProfile({ userId: 'me' })
+    const gmailAddress = profile.data.emailAddress
+    console.log('Gmail address:', gmailAddress)
 
-    // ── Check if already connected ──
+    // Check if already exists
     const { data: existing } = await supabase
       .from('gmail_accounts')
       .select('id')
       .eq('user_id', userId)
       .eq('gmail_address', gmailAddress)
-      .single();
+      .single()
 
     if (existing) {
-      // Update tokens — they may have refreshed
-      await supabase
+      console.log('Updating existing Gmail account')
+      const { error: updateError } = await supabase
         .from('gmail_accounts')
         .update({
           access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token
+          refresh_token: tokens.refresh_token || existing.refresh_token
         })
-        .eq('id', existing.id);
+        .eq('id', existing.id)
 
-    } else {
-      // ── Check plan limits ──
-      // Free: 1 Gmail, Pro: 5 Gmails
-      const { data: existingAccounts } = await supabase
-        .from('gmail_accounts')
-        .select('id')
-        .eq('user_id', userId);
-
-      const { data: user } = await supabase
-        .from('users')
-        .select('plan')
-        .eq('id', userId)
-        .single();
-
-      const maxAccounts = user.plan === 'pro' ? 5 : 1;
-
-      if (existingAccounts && existingAccounts.length >= maxAccounts) {
-        return res.redirect(
-          `${process.env.FRONTEND_URL}/settings?error=gmail_limit`
-        );
+      if (updateError) {
+        console.log('Update error:', updateError)
+      } else {
+        console.log('Gmail account updated successfully')
       }
 
-      // ── Save Gmail account ──
-      const isFirst = !existingAccounts || existingAccounts.length === 0;
-
-      await supabase
+    } else {
+      console.log('Creating new Gmail account record')
+      const { data: newAccount, error: insertError } = await supabase
         .from('gmail_accounts')
         .insert({
           user_id: userId,
           gmail_address: gmailAddress,
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
-          is_primary: isFirst  // First Gmail is primary
-        });
+          is_primary: true,
+          emails_scanned: 0
+        })
+        .select()
+        .single()
+
+      if (insertError) {
+        console.log('Insert error:', insertError)
+        console.log('Insert error details:', JSON.stringify(insertError))
+        return res.redirect(
+          `${process.env.FRONTEND_URL}/connect-gmail?error=save_failed`
+        )
+      }
+
+      console.log('Gmail account saved:', newAccount.id)
     }
 
-    // ── Add scan job to background queue ──
-    // This starts the inbox scanning immediately
-    // User is redirected to scanning page
+    // Add scan job to queue
+    console.log('Adding scan job to queue...')
     await bullService.addScanJob({
       userId,
       gmailAddress
-    });
+    })
+    console.log('Scan job added')
 
-    // Redirect to scanning progress page
-    res.redirect(`${process.env.FRONTEND_URL}/scanning`);
+    // Redirect to scanning page
+    res.redirect(`${process.env.FRONTEND_URL}/scanning`)
 
   } catch (err) {
-    console.error('Gmail callback error:', err);
-    res.redirect(`${process.env.FRONTEND_URL}/connect-gmail?error=failed`);
+    console.error('Callback error:', err.message)
+    console.error('Full error:', err)
+    res.redirect(`${process.env.FRONTEND_URL}/connect-gmail?error=failed`)
   }
 });
 
@@ -155,7 +181,7 @@ router.get('/scan-status', protect, async (req, res) => {
 // ─── TRIGGER RESCAN ──────────────────────────────────
 
 // User clicks rescan in settings
-// Adds new scan jobs for all connected Gmails
+// Adds new scan jobs for all connected Gmails after clearing previous automatic scans
 router.post('/rescan', protect, async (req, res) => {
   try {
     const { data: gmailAccounts } = await supabase
@@ -166,6 +192,23 @@ router.post('/rescan', protect, async (req, res) => {
     if (!gmailAccounts || gmailAccounts.length === 0) {
       return res.status(400).json({ error: 'No Gmail connected' });
     }
+
+    console.log(`Starting clean rescan for user: ${req.user.userId}`);
+
+    // Clear previously scanned data to allow the upgraded AI parser to re-evaluate them
+    await supabase.from('alerts').delete().eq('user_id', req.user.userId);
+    await supabase.from('receipts').delete().eq('user_id', req.user.userId);
+    await supabase
+      .from('subscriptions')
+      .delete()
+      .eq('user_id', req.user.userId)
+      .neq('source_gmail', 'manual');
+
+    // Reset scan progress stats on Gmail account records
+    await supabase
+      .from('gmail_accounts')
+      .update({ emails_scanned: 0, last_scanned: null })
+      .eq('user_id', req.user.userId);
 
     // Add scan job for each connected Gmail
     for (const account of gmailAccounts) {
@@ -178,6 +221,7 @@ router.post('/rescan', protect, async (req, res) => {
     res.json({ message: 'Rescan started' });
 
   } catch (err) {
+    console.error('Failed to start rescan:', err.message);
     res.status(500).json({ error: 'Failed to start rescan' });
   }
 });

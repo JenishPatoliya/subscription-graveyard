@@ -71,8 +71,21 @@ const createGmailClient = (accessToken, refreshToken) => {
 // Never returns personal emails
 const searchReceiptEmails = async (gmail) => {
   
-  // Simplified query to catch more emails
-  const query = 'subject:(receipt OR invoice OR payment OR subscription OR renewal OR charged OR billing) newer_than:6m'
+  const query = [
+    'subject:(receipt OR invoice OR',
+    '"payment successful" OR "payment confirmation"',
+    'OR "subscription renewed" OR "billing confirmation")',
+    'newer_than:6m',
+    // Block common wrong sources
+    '-from:reddit.com',
+    '-from:quora.com', 
+    '-subject:"payment failed"',
+    '-subject:"payment declined"',
+    '-subject:"update payment"',
+    '-subject:"payment issue"',
+    '-subject:"changes to your"',
+    '-subject:"welcome to"'
+  ].join(' ')
 
   console.log('Gmail search query:', query)
 
@@ -88,31 +101,168 @@ const searchReceiptEmails = async (gmail) => {
   return messages
 }
 
-// ─── GET EMAIL CONTENT ───────────────────────────────
+const decodeBase64Url = (data) => {
+  if (!data) return '';
+  try {
+    return Buffer.from(data, 'base64url').toString('utf8');
+  } catch (err) {
+    try {
+      return Buffer.from(data, 'base64').toString('utf8');
+    } catch (e) {
+      return '';
+    }
+  }
+};
+
+const findTextPart = (part) => {
+  if (!part) return null;
+  if (part.mimeType === 'text/plain' && part.body && part.body.data) {
+    return decodeBase64Url(part.body.data);
+  }
+  if (part.parts) {
+    for (const subPart of part.parts) {
+      const found = findTextPart(subPart);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+const findHtmlPart = (part) => {
+  if (!part) return null;
+  if (part.mimeType === 'text/html' && part.body && part.body.data) {
+    const html = decodeBase64Url(part.body.data);
+    let clean = html;
+    
+    // Fast non-backtracking style removal
+    while (clean.includes('<style') && clean.includes('</style>')) {
+      const start = clean.indexOf('<style');
+      const end = clean.indexOf('</style>', start);
+      if (end === -1) break;
+      clean = clean.substring(0, start) + clean.substring(end + 8);
+    }
+    
+    // Fast non-backtracking script removal
+    while (clean.includes('<script') && clean.includes('</script>')) {
+      const start = clean.indexOf('<script');
+      const end = clean.indexOf('</script>', start);
+      if (end === -1) break;
+      clean = clean.substring(0, start) + clean.substring(end + 9);
+    }
+    
+    return clean
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  if (part.parts) {
+    for (const subPart of part.parts) {
+      const found = findHtmlPart(subPart);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+const getBodyText = (payload) => {
+  if (!payload) return '';
+  if (payload.body && payload.body.data) {
+    const text = decodeBase64Url(payload.body.data);
+    if (payload.mimeType === 'text/html') {
+      let clean = text;
+      while (clean.includes('<style') && clean.includes('</style>')) {
+        const start = clean.indexOf('<style');
+        const end = clean.indexOf('</style>', start);
+        if (end === -1) break;
+        clean = clean.substring(0, start) + clean.substring(end + 8);
+      }
+      while (clean.includes('<script') && clean.includes('</script>')) {
+        const start = clean.indexOf('<script');
+        const end = clean.indexOf('</script>', start);
+        if (end === -1) break;
+        clean = clean.substring(0, start) + clean.substring(end + 9);
+      }
+      return clean
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    return text;
+  }
+  let body = findTextPart(payload);
+  if (!body) {
+    body = findHtmlPart(payload);
+  }
+  return body || '';
+};
 
 // Gets the actual content of a specific email
-// We only get metadata headers and snippet
-// We do NOT get full email body to protect privacy
+// Fetches the full format to decode body text
 const getEmailContent = async (gmail, messageId) => {
   const response = await gmail.users.messages.get({
     userId: 'me',
     id: messageId,
-    format: 'metadata',
-    metadataHeaders: ['Subject', 'From', 'Date']
+    format: 'full'
   })
 
   const headers = response.data.payload.headers
-  
   const subject = headers.find(h => h.name === 'Subject')?.value || ''
   const from = headers.find(h => h.name === 'From')?.value || ''
   const date = headers.find(h => h.name === 'Date')?.value || ''
-  
-  // Snippet is first 200 characters
-  // Enough for AI to understand context
-  // We never read full email body
-  const snippet = response.data.snippet || ''
 
-  return { subject, from, date, snippet, messageId }
+  // Extract full email body
+  let body = ''
+
+  const extractBody = (payload) => {
+    if (!payload) return ''
+    
+    if (payload.body && payload.body.data) {
+      try {
+        const decoded = Buffer.from(
+          payload.body.data, 
+          'base64'
+        ).toString('utf-8')
+        return decoded
+      } catch (e) {
+        return ''
+      }
+    }
+
+    if (payload.parts) {
+      for (const part of payload.parts) {
+        if (part.mimeType === 'text/plain') {
+          try {
+            const decoded = Buffer.from(
+              part.body.data || '', 
+              'base64'
+            ).toString('utf-8')
+            body += decoded
+          } catch (e) {}
+        }
+      }
+    }
+    
+    return body
+  }
+
+  body = extractBody(response.data.payload)
+
+  // Clean the body
+  // Remove HTML tags
+  const cleanBody = body
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, 1000) // First 1000 chars is enough
+
+  return { 
+    subject, 
+    from, 
+    date, 
+    snippet: response.data.snippet || '',
+    body: cleanBody,
+    messageId 
+  }
 };
 
 // Export all functions

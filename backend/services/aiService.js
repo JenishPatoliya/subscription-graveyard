@@ -12,7 +12,7 @@ const INDIAN_SERVICES = [
   'NordVPN', 'LinkedIn', 'GitHub', 'Dropbox',
   'Microsoft 365', 'Zoom', 'Slack', 'Figma',
   'Midjourney', 'Claude', 'Grammarly',
-  'Coursera', 'Udemy', 'Swiggy One',
+  'Swiggy One',
   'Zomato Pro', 'Jio', 'Airtel', 'BSNL',
   'MX Player', 'SonyLIV', 'ZEE5', 'Voot'
 ]
@@ -80,40 +80,42 @@ const getCategory = (serviceName) => {
 }
 
 const parseEmailForSubscription = async (emailData) => {
-  const { subject, from, date, snippet } = emailData
+  const { subject, from, date, snippet, body } = emailData
 
   const prompt = `
-You are analyzing an email to find subscription payment info.
+You are a strict payment receipt detector.
 
 Email Subject: ${subject}
 Email From: ${from}
-Email Date: ${date}
 Email Preview: ${snippet}
 
-Known subscription services for reference:
-${INDIAN_SERVICES.join(', ')}
+STRICT RULES - return isSubscription TRUE only if:
+1. Email contains an actal payment amount clearly stated
+2. Email confirms payment was SUCCESSFUL not failed
+3. Email shows a RECURRING billing date not one time
+4. All three must be present: amount + success + renewal date
 
-Return ONLY a JSON object. No extra text. No markdown.
+Return isSubscription FALSE if:
+- Payment was declined or failed
+- This is a one time purchase no renewal date
+- This is a notification or policy change email
+- This is a marketing or promotional email
+- Amount is not clearly stated in email
+- Email is a Reddit or social media notification
+- No explicit renewal date mentioned
 
+Return ONLY this JSON no extra text:
 {
   "isSubscription": true or false,
-  "serviceName": "exact service name or null",
-  "amount": number only no symbols or null,
+  "serviceName": "exact name or null",
+  "amount": exact number from email or null,
   "currency": "INR or USD or null",
-  "billingCycle": "monthly or yearly or null",
   "receiptDate": "YYYY-MM-DD or null",
   "renewalDate": "YYYY-MM-DD or null"
 }
 
-Rules:
-- isSubscription true only if this is a payment receipt or renewal notice
-- Extract exact service name as it appears
-- Amount must be number only like 499 not Rs.499 or ₹499
-- If amount is in USD multiply by 83 for INR equivalent
-- receiptDate is when payment was made
-- renewalDate is when next payment is due
-- Return null for uncertain fields
-- If this is just a promotional email not a receipt return isSubscription false
+If ANY doubt return isSubscription false.
+Better to miss than wrong detect.
 `
 
   try {
