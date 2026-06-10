@@ -194,10 +194,16 @@ const parseEmailForSubscription = async (emailData) => {
     contentLower.includes('thank you for your payment') ||
     contentLower.includes('subscription renewed') ||
     contentLower.includes('subscription active') ||
-    contentLower.includes('your subscription') && 
-    contentLower.includes('renewed') ||
+    (contentLower.includes('your subscription') && contentLower.includes('renewed')) ||
     contentLower.includes('receipt') ||
-    contentLower.includes('invoice')
+    contentLower.includes('invoice') ||
+    contentLower.includes('successfully processed') ||
+    contentLower.includes('payment method ending') ||
+    contentLower.includes('processed your payment') ||
+    contentLower.includes('billing event') ||
+    contentLower.includes('charged') ||
+    contentLower.includes('billed') ||
+    contentLower.includes('transaction successful')
 
   if (!hasSuccess) {
     console.log('NO SUCCESS SIGNAL:', subject)
@@ -205,7 +211,7 @@ const parseEmailForSubscription = async (emailData) => {
   }
 
   // Block 5 - Must have an amount
-  const amountRegex = /₹\s*[\d,]+|rs\.?\s*[\d,]+|inr\s*[\d,]+|\$\s*[\d.]+|usd\s*[\d.]+|[€£]\s*[\d.,]+/i
+  const amountRegex = /₹\s*[\d,]+|rs\.?\s*[\d,]+|inr\s*[\d,]+|\$\s*[\d.]+|usd\s*[\d.]+|[€£]\s*[\d.,]+|(?:total|amount|price|charge|charged|price of|sum of)\s*(?:of|is|was|to)?\s*[\d,.]+/i
   const hasAmount = amountRegex.test(fullContent)
 
   if (!hasAmount) {

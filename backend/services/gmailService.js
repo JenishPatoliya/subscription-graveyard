@@ -72,7 +72,7 @@ const createGmailClient = (accessToken, refreshToken) => {
 const searchReceiptEmails = async (gmail) => {
   
   // Simple clean query that works
-  const query = 'subject:(receipt OR invoice OR payment OR subscription OR renewal OR billing) newer_than:1y'
+  const query = 'subject:(receipt OR invoice OR payment OR subscription OR renewal OR billing OR renew OR transaction OR order OR bill) newer_than:1y'
 
   console.log('Searching Gmail...')
 
