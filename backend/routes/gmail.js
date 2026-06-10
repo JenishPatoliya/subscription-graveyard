@@ -180,11 +180,8 @@ router.get('/scan-status', protect, async (req, res) => {
 
 router.post('/rescan', protect, async (req, res) => {
   try {
-    // Block rescan for demo account
     if (req.user.isDemo) {
-      return res.json({ 
-        message: 'Rescan complete' 
-      })
+      return res.json({ message: 'Rescan complete' })
     }
 
     const { data: gmailAccounts } = await supabase
@@ -193,13 +190,10 @@ router.post('/rescan', protect, async (req, res) => {
       .eq('user_id', req.user.userId)
 
     if (!gmailAccounts || gmailAccounts.length === 0) {
-      return res.status(400).json({ 
-        error: 'No Gmail connected' 
-      })
+      return res.status(400).json({ error: 'No Gmail connected' })
     }
 
-    // DO NOT DELETE ANYTHING
-    // Just add scan job
+    // DO NOT DELETE ANYTHING HERE
     for (const account of gmailAccounts) {
       await bullService.addScanJob({
         userId: req.user.userId,

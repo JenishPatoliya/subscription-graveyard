@@ -25,9 +25,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
 const processJob = async (job) => {
   const { userId, gmailAddress } = job.data
-  console.log(`Starting real Gmail scan for ${gmailAddress}`)
+  
+  console.log('=== SCAN STARTED ===')
+  console.log('Gmail:', gmailAddress)
 
-  // Step 1 — Get stored tokens
   const { data: gmailAccount } = await supabase
     .from('gmail_accounts')
     .select('*')
@@ -36,270 +37,160 @@ const processJob = async (job) => {
     .single()
 
   if (!gmailAccount) {
-    throw new Error('Gmail account not found')
+    console.log('Gmail account not found in database')
+    return
   }
 
   let emailsScanned = 0
   let subscriptionsFound = 0
 
   try {
-    // Step 2 — Create Gmail client with tokens
     const gmail = gmailService.createGmailClient(
       gmailAccount.access_token,
       gmailAccount.refresh_token
     )
 
-    // Step 3 — Search Gmail
-    // Gmail filters on their servers
-    // Only returns billing emails
     const messages = await gmailService.searchReceiptEmails(gmail)
-    
-    console.log(`Processing ${messages.length} emails for ${gmailAddress}`)
+    console.log(`Processing ${messages.length} emails`)
 
-    // Step 4 — Process in batches of 5
-    // Small batches = safe and reliable
-    const batchSize = 5
+    for (let i = 0; i < messages.length; i++) {
+      const message = messages[i]
+      
+      try {
+        console.log(`Email ${i + 1} of ${messages.length}`)
 
-    for (let i = 0; i < messages.length; i += batchSize) {
-      const batch = messages.slice(i, i + batchSize)
+        // Get email content
+        const emailData = await gmailService.getEmailContent(
+          gmail,
+          message.id
+        )
 
-      for (const message of batch) {
-        try {
-          // Skip if already processed this email
+        console.log('Subject:', emailData.subject)
+
+        // Parse with AI
+        const result = await parseEmailForSubscription(emailData)
+        console.log('AI Result:', result.isSubscription, result.serviceName, result.amount)
+
+        // Only save if valid subscription
+        if (
+          result.isSubscription === true &&
+          result.serviceName &&
+          result.amount &&
+          result.amount > 0 &&
+          result.amount < 50000
+        ) {
+          // Check if subscription already exists
           const { data: existing } = await supabase
-            .from('receipts')
-            .select('id')
-            .eq('gmail_message_id', message.id)
-            .single()
+            .from('subscriptions')
+            .select('*')
+            .eq('user_id', userId)
+            .ilike('service_name', `%${result.serviceName}%`)
+            .maybeSingle()
 
           if (existing) {
-            emailsScanned++
-            continue
-          }
-
-          // Get email content
-          // Only gets subject, sender, date, snippet
-          // Never reads full email body
-          const emailData = await gmailService.getEmailContent(
-            gmail,
-            message.id
-          )
-
-          // After getting email content
-          console.log('---')
-          console.log('Subject:', emailData.subject)
-          console.log('Snippet:', emailData.snippet)
-
-          // Send to AI for parsing
-          const result = await parseEmailForSubscription(emailData)
-
-          // Block Udemy and Coursera course purchases or promotional emails
-          if (result.isSubscription && result.serviceName) {
-            const nameLower = result.serviceName.toLowerCase();
-            if (nameLower.includes('udemy') || nameLower.includes('coursera')) {
-              const textToCheck = (emailData.subject + ' ' + (emailData.body || '')).toLowerCase();
-              const hasBillingConfirmation = ['receipt', 'invoice', 'charged', 'billed', 'payment success', 'transaction successful', 'paid'].some(w => textToCheck.includes(w));
-              const hasPromoKeywords = ['save', 'upgrade', 'discount', 'grow', 'coupon', 'try', 'offer'].some(w => textToCheck.includes(w));
-              
-              // If it contains "course", "order", promo keywords, or lacks absolute billing terms, set to false
-              if (!hasBillingConfirmation || hasPromoKeywords || textToCheck.includes('course') || textToCheck.includes('order')) {
-                result.isSubscription = false;
-                console.log(`[Filter] Automatically ignored Udemy/Coursera order/promo: "${emailData.subject}"`);
-              }
-            }
-          }
-
-          // After AI parsing
-          console.log('AI Result:', JSON.stringify(result))
-          console.log('---')
-
-          if (result.isSubscription && result.serviceName && result.amount) {
-            // Estimate renewal date if not explicitly found
-            if (!result.renewalDate) {
-              const baseDate = result.receiptDate ? new Date(result.receiptDate) : new Date();
-              baseDate.setMonth(baseDate.getMonth() + 1);
-              result.renewalDate = baseDate.toISOString().split('T')[0];
-            }
-
-            // Safety check 1: Amount must exist and be reasonable
-            if (!result.amount || result.amount <= 0 || result.amount > 50000) {
-              console.log('Invalid amount, skipping:', result.amount)
-              continue
-            }
-
-            // Safety check 2: Renewal date must be in future or recent past (not more than 1 year ago)
-            if (result.renewalDate) {
-              const renewal = new Date(result.renewalDate)
-              const oneYearAgo = new Date()
-              oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
-              
-              if (renewal < oneYearAgo) {
-                console.log('Renewal date too old, skipping:', result.renewalDate)
-                continue
-              }
-            }
-
-            // Safety check 3: Block known non-subscription senders
-            const blockedSenders = [
-              'reddit',
-              'quora', 
-              'twitter',
-              'instagram',
-              'facebook',
-              'linkedin notification',
-              'cashfree',
-              'razorpay'
-            ]
-            
-            const fromLower = emailData.from.toLowerCase()
-            const isBlocked = blockedSenders.some(s => fromLower.includes(s))
-            
-            if (isBlocked) {
-              console.log('Blocked sender, skipping:', emailData.from)
-              continue
-            }
-
-            // All checks passed - save subscription
-            console.log('SAVING:', result.serviceName, result.amount)
-            
-            // Check if subscription already exists
-            const { data: existingSubs } = await supabase
+            // Update existing
+            await supabase
               .from('subscriptions')
-              .select('*')
-              .eq('user_id', userId)
-              .ilike('service_name', `%${result.serviceName}%`);
+              .update({
+                total_spent: Number(existing.total_spent) + Number(result.amount),
+                total_receipts: existing.total_receipts + 1,
+                last_receipt_date: result.receiptDate || existing.last_receipt_date,
+                next_renewal_date: result.renewalDate || existing.next_renewal_date,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existing.id)
 
-            const existingSub = existingSubs && existingSubs.length > 0 ? existingSubs[0] : null;
+            // Save receipt only if not duplicate
+            const { data: existingReceipt } = await supabase
+              .from('receipts')
+              .select('id')
+              .eq('gmail_message_id', message.id)
+              .maybeSingle()
 
-            if (existingSub) {
-              // Update existing subscription
-              await supabase
-                .from('subscriptions')
-                .update({
-                  total_spent: Number(existingSub.total_spent) + Number(result.amount),
-                  total_receipts: existingSub.total_receipts + 1,
-                  last_receipt_date: result.receiptDate || existingSub.last_receipt_date,
-                  next_renewal_date: result.renewalDate || existingSub.next_renewal_date,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', existingSub.id)
-
-              // Save receipt record
+            if (!existingReceipt) {
               await supabase.from('receipts').insert({
                 user_id: userId,
-                subscription_id: existingSub.id,
+                subscription_id: existing.id,
+                gmail_message_id: message.id,
+                amount: result.amount,
+                receipt_date: result.receiptDate,
+                raw_subject: emailData.subject
+              })
+            }
+
+            console.log('Updated:', existing.service_name)
+
+          } else {
+            // Create new subscription
+            const { data: newSub, error: subError } = await supabase
+              .from('subscriptions')
+              .insert({
+                user_id: userId,
+                source_gmail: gmailAddress,
+                service_name: result.serviceName,
+                amount: result.amount,
+                currency: result.currency || 'INR',
+                category: result.category || 'Other',
+                first_receipt_date: result.receiptDate,
+                last_receipt_date: result.receiptDate,
+                next_renewal_date: result.renewalDate,
+                total_receipts: 1,
+                total_spent: result.amount,
+                cancel_url: result.cancelUrl
+              })
+              .select()
+              .single()
+
+            if (subError) {
+              console.log('Save error:', subError.message)
+            } else if (newSub) {
+              // Save receipt
+              await supabase.from('receipts').insert({
+                user_id: userId,
+                subscription_id: newSub.id,
                 gmail_message_id: message.id,
                 amount: result.amount,
                 receipt_date: result.receiptDate,
                 raw_subject: emailData.subject
               })
 
-            } else {
-              // Create new subscription
-              const { data: newSub } = await supabase
-                .from('subscriptions')
-                .insert({
-                  user_id: userId,
-                  source_gmail: gmailAddress,
-                  service_name: result.serviceName,
-                  amount: result.amount,
-                  currency: result.currency || 'INR',
-                  category: result.category,
-                  first_receipt_date: result.receiptDate,
-                  last_receipt_date: result.receiptDate,
-                  next_renewal_date: result.renewalDate,
-                  total_receipts: 1,
-                  total_spent: result.amount,
-                  cancel_url: result.cancelUrl
-                })
-                .select()
-                .single()
-
-              if (newSub) {
-                // Save receipt
-                await supabase.from('receipts').insert({
+              // Schedule alert
+              if (result.renewalDate) {
+                const alertDate = new Date(result.renewalDate)
+                alertDate.setDate(alertDate.getDate() - 3)
+                await supabase.from('alerts').insert({
                   user_id: userId,
                   subscription_id: newSub.id,
-                  gmail_message_id: message.id,
-                  amount: result.amount,
-                  receipt_date: result.receiptDate,
-                  raw_subject: emailData.subject
+                  alert_date: alertDate.toISOString().split('T')[0],
+                  days_before: 3
                 })
-
-                // Schedule renewal alert
-                if (result.renewalDate) {
-                  const alertDate = new Date(result.renewalDate)
-                  alertDate.setDate(alertDate.getDate() - 3)
-
-                  await supabase.from('alerts').insert({
-                    user_id: userId,
-                    subscription_id: newSub.id,
-                    alert_date: alertDate.toISOString().split('T')[0],
-                    days_before: 3
-                  })
-                }
-
-                subscriptionsFound++
-                console.log(`New subscription found: ${result.serviceName} ₹${result.amount}`)
               }
+
+              subscriptionsFound++
+              console.log('SAVED:', result.serviceName, '₹' + result.amount)
             }
           }
-
-          emailsScanned++
-
-        } catch (err) {
-          // IMPORTANT - catch error and CONTINUE
-          // Do not let one email stop others
-          console.log('Error on email, skipping:', err.message)
-          emailsScanned++
-          continue  // ← This is critical
         }
 
-        // Small delay between each email
-        // Prevents hitting Gmail API too fast
-        await sleep(300)
+        emailsScanned++
+
+      } catch (err) {
+        console.log('Email error, skipping:', err.message)
+        emailsScanned++
       }
 
-      // Update progress after each batch
+      // Update progress
       await supabase
         .from('gmail_accounts')
         .update({ emails_scanned: emailsScanned })
         .eq('id', gmailAccount.id)
 
-      console.log(`Progress: ${emailsScanned}/${messages.length} emails processed`)
-
-      // Pause between batches
-      await sleep(500)
+      await sleep(400)
     }
 
-    // --- POST-SCAN CLEANUP ---
-    try {
-      const { data: subsToCleanup } = await supabase
-        .from('subscriptions')
-        .select('id, service_name, total_receipts')
-        .eq('user_id', userId)
-        .lte('total_receipts', 1);
-
-      if (subsToCleanup) {
-        for (const sub of subsToCleanup) {
-          const name = sub.service_name.toLowerCase();
-          if (name.includes('udemy') || name.includes('coursera')) {
-            // Delete receipts first
-            await supabase.from('receipts').delete().eq('subscription_id', sub.id);
-            // Delete subscription
-            await supabase.from('subscriptions').delete().eq('id', sub.id);
-            subscriptionsFound = Math.max(0, subscriptionsFound - 1);
-            console.log(`[Cleanup] Removed single-receipt course purchase: ${sub.service_name}`);
-          }
-        }
-      }
-    } catch (cleanupErr) {
-      console.error('Post-scan cleanup failed:', cleanupErr.message);
-    }
-  } catch (scanErr) {
-    console.error(`Gmail scanning encountered an error:`, scanErr.message)
+  } catch (err) {
+    console.error('Scan error:', err.message)
   } finally {
-    // Always mark scan complete in the database to prevent the frontend from getting stuck
     await supabase
       .from('gmail_accounts')
       .update({
@@ -308,9 +199,9 @@ const processJob = async (job) => {
       })
       .eq('id', gmailAccount.id)
 
-    console.log(`Scan complete!`)
-    console.log(`Emails processed: ${emailsScanned}`)
-    console.log(`New subscriptions found: ${subscriptionsFound}`)
+    console.log('=== SCAN COMPLETE ===')
+    console.log('Emails processed:', emailsScanned)
+    console.log('New subscriptions:', subscriptionsFound)
   }
 }
 

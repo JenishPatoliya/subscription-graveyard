@@ -71,22 +71,10 @@ const createGmailClient = (accessToken, refreshToken) => {
 // Never returns personal emails
 const searchReceiptEmails = async (gmail) => {
   
-  const query = [
-    '(subject:(receipt OR invoice OR renewal OR renew OR billing OR payment OR transaction OR order OR bill) OR',
-    '"payment successful" OR "payment confirmation" OR "subscription renewed" OR "billing confirmation")',
-    'newer_than:1y',
-    // Block common wrong sources
-    '-from:reddit.com',
-    '-from:quora.com', 
-    '-subject:"payment failed"',
-    '-subject:"payment declined"',
-    '-subject:"update payment"',
-    '-subject:"payment issue"',
-    '-subject:"changes to your"',
-    '-subject:"welcome to"'
-  ].join(' ')
+  // Simple clean query that works
+  const query = 'subject:(receipt OR invoice OR payment OR subscription OR renewal OR billing) newer_than:1y'
 
-  console.log('Gmail search query:', query)
+  console.log('Searching Gmail...')
 
   const response = await gmail.users.messages.list({
     userId: 'me',
@@ -95,7 +83,7 @@ const searchReceiptEmails = async (gmail) => {
   })
 
   const messages = response.data.messages || []
-  console.log('Emails found by Gmail search:', messages.length)
+  console.log(`Found ${messages.length} emails to check`)
 
   return messages
 }
