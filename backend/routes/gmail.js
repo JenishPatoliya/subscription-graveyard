@@ -178,53 +178,41 @@ router.get('/scan-status', protect, async (req, res) => {
   }
 });
 
-// ─── TRIGGER RESCAN ──────────────────────────────────
-
-// User clicks rescan in settings
-// Adds new scan jobs for all connected Gmails after clearing previous automatic scans
 router.post('/rescan', protect, async (req, res) => {
   try {
+    // Block rescan for demo account
+    if (req.user.isDemo) {
+      return res.json({ 
+        message: 'Rescan complete' 
+      })
+    }
+
     const { data: gmailAccounts } = await supabase
       .from('gmail_accounts')
       .select('*')
-      .eq('user_id', req.user.userId);
+      .eq('user_id', req.user.userId)
 
     if (!gmailAccounts || gmailAccounts.length === 0) {
-      return res.status(400).json({ error: 'No Gmail connected' });
+      return res.status(400).json({ 
+        error: 'No Gmail connected' 
+      })
     }
 
-    console.log(`Starting clean rescan for user: ${req.user.userId}`);
-
-    // Clear previously scanned data to allow the upgraded AI parser to re-evaluate them
-    await supabase.from('alerts').delete().eq('user_id', req.user.userId);
-    await supabase.from('receipts').delete().eq('user_id', req.user.userId);
-    await supabase
-      .from('subscriptions')
-      .delete()
-      .eq('user_id', req.user.userId)
-      .neq('source_gmail', 'manual');
-
-    // Reset scan progress stats on Gmail account records
-    await supabase
-      .from('gmail_accounts')
-      .update({ emails_scanned: 0, last_scanned: null })
-      .eq('user_id', req.user.userId);
-
-    // Add scan job for each connected Gmail
+    // DO NOT DELETE ANYTHING
+    // Just add scan job
     for (const account of gmailAccounts) {
       await bullService.addScanJob({
         userId: req.user.userId,
         gmailAddress: account.gmail_address
-      });
+      })
     }
 
-    res.json({ message: 'Rescan started' });
+    res.json({ message: 'Rescan started' })
 
   } catch (err) {
-    console.error('Failed to start rescan:', err.message);
-    res.status(500).json({ error: 'Failed to start rescan' });
+    res.status(500).json({ error: 'Failed to start rescan' })
   }
-});
+})
 
 // ─── DISCONNECT GMAIL ────────────────────────────────
 

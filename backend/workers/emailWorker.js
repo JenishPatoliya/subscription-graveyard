@@ -113,7 +113,14 @@ const processJob = async (job) => {
           console.log('AI Result:', JSON.stringify(result))
           console.log('---')
 
-          if (result.isSubscription && result.serviceName && result.amount && result.renewalDate) {
+          if (result.isSubscription && result.serviceName && result.amount) {
+            // Estimate renewal date if not explicitly found
+            if (!result.renewalDate) {
+              const baseDate = result.receiptDate ? new Date(result.receiptDate) : new Date();
+              baseDate.setMonth(baseDate.getMonth() + 1);
+              result.renewalDate = baseDate.toISOString().split('T')[0];
+            }
+
             // Safety check 1: Amount must exist and be reasonable
             if (!result.amount || result.amount <= 0 || result.amount > 50000) {
               console.log('Invalid amount, skipping:', result.amount)
@@ -241,9 +248,11 @@ const processJob = async (job) => {
           emailsScanned++
 
         } catch (err) {
-          // One email failing should not stop entire scan
-          console.error(`Error processing email:`, err.message)
+          // IMPORTANT - catch error and CONTINUE
+          // Do not let one email stop others
+          console.log('Error on email, skipping:', err.message)
           emailsScanned++
+          continue  // ← This is critical
         }
 
         // Small delay between each email

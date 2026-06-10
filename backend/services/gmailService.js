@@ -72,10 +72,9 @@ const createGmailClient = (accessToken, refreshToken) => {
 const searchReceiptEmails = async (gmail) => {
   
   const query = [
-    'subject:(receipt OR invoice OR',
-    '"payment successful" OR "payment confirmation"',
-    'OR "subscription renewed" OR "billing confirmation")',
-    'newer_than:6m',
+    '(subject:(receipt OR invoice OR renewal OR renew OR billing OR payment OR transaction OR order OR bill) OR',
+    '"payment successful" OR "payment confirmation" OR "subscription renewed" OR "billing confirmation")',
+    'newer_than:1y',
     // Block common wrong sources
     '-from:reddit.com',
     '-from:quora.com', 
@@ -209,59 +208,68 @@ const getEmailContent = async (gmail, messageId) => {
   const subject = headers.find(h => h.name === 'Subject')?.value || ''
   const from = headers.find(h => h.name === 'From')?.value || ''
   const date = headers.find(h => h.name === 'Date')?.value || ''
+  const snippet = response.data.snippet || ''
 
-  // Extract full email body
-  let body = ''
+  // Extract full body text
+  let fullBody = ''
 
-  const extractBody = (payload) => {
-    if (!payload) return ''
-    
+  const extractText = (payload) => {
+    if (!payload) return
+
+    // Direct body data
     if (payload.body && payload.body.data) {
       try {
         const decoded = Buffer.from(
-          payload.body.data, 
+          payload.body.data,
           'base64'
         ).toString('utf-8')
-        return decoded
-      } catch (e) {
-        return ''
-      }
+        fullBody += decoded + ' '
+      } catch (e) {}
     }
 
+    // Check parts
     if (payload.parts) {
       for (const part of payload.parts) {
-        if (part.mimeType === 'text/plain') {
-          try {
-            const decoded = Buffer.from(
-              part.body.data || '', 
-              'base64'
-            ).toString('utf-8')
-            body += decoded
-          } catch (e) {}
+        if (
+          part.mimeType === 'text/plain' ||
+          part.mimeType === 'text/html'
+        ) {
+          if (part.body && part.body.data) {
+            try {
+              const decoded = Buffer.from(
+                part.body.data,
+                'base64'
+              ).toString('utf-8')
+              fullBody += decoded + ' '
+            } catch (e) {}
+          }
+        }
+        // Nested parts
+        if (part.parts) {
+          extractText(part)
         }
       }
     }
-    
-    return body
   }
 
-  body = extractBody(response.data.payload)
+  extractText(response.data.payload)
 
-  // Clean the body
-  // Remove HTML tags
-  const cleanBody = body
+  // Clean HTML tags
+  const cleanBody = fullBody
     .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim()
-    .substring(0, 1000) // First 1000 chars is enough
+    .substring(0, 2000)
 
-  return { 
-    subject, 
-    from, 
-    date, 
-    snippet: response.data.snippet || '',
+  return {
+    subject,
+    from,
+    date,
+    snippet,
     body: cleanBody,
-    messageId 
+    messageId
   }
 };
 

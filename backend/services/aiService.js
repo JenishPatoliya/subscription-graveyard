@@ -82,59 +82,189 @@ const getCategory = (serviceName) => {
 const parseEmailForSubscription = async (emailData) => {
   const { subject, from, date, snippet, body } = emailData
 
+  const fullContent = body || snippet
+
+  // PRE-CHECKS BEFORE CALLING AI
+  // These save API calls and are 100% accurate
+
+  const subjectLower = subject.toLowerCase()
+  const fromLower = from.toLowerCase()
+  const contentLower = fullContent.toLowerCase()
+
+  // Block 1 - Bad senders immediately
+  const blockedSenders = [
+    'reddit.com',
+    'redditmail.com',
+    'quora.com',
+    'twitter.com',
+    'instagram.com',
+    'facebook.com',
+    'linkedin.com',
+    'youtube.com/notification',
+    'students.udemy.com',
+    'hello@udemy',
+    'noreply@udemy',
+    'medium.com',
+    'substack.com'
+  ]
+
+  for (const blocked of blockedSenders) {
+    if (fromLower.includes(blocked)) {
+      console.log('BLOCKED SENDER:', from)
+      return { isSubscription: false }
+    }
+  }
+
+  // Block 2 - Bad subject keywords immediately
+  const blockedSubjects = [
+    'payment failed',
+    'payment declined',
+    'payment issue',
+    'declined',
+    'suspended due to',
+    'needs attention',
+    'update payment',
+    'subscription suspended',
+    'subscription canceled',
+    'subscription cancelled',
+    'has been canceled',
+    'has been cancelled',
+    'changes to your',
+    'save with',
+    'invest in',
+    'limited time',
+    'special offer',
+    'discount',
+    'unsubscribe',
+    'digest',
+    'newsletter',
+    'weekly roundup',
+    'daily digest',
+    'verify your',
+    'confirm your email',
+    'welcome to',
+    'getting started',
+    'tips for',
+    'introducing'
+  ]
+
+  for (const blocked of blockedSubjects) {
+    if (subjectLower.includes(blocked)) {
+      console.log('BLOCKED SUBJECT:', subject)
+      return { isSubscription: false }
+    }
+  }
+
+  // Block 3 - Payment gateway emails without renewal
+  // Cashfree, Razorpay = one time payments
+  const oneTimeGateways = [
+    'cashfree',
+    'razorpay',
+    'instamojo',
+    'payu',
+    'ccavenue'
+  ]
+
+  for (const gateway of oneTimeGateways) {
+    if (fromLower.includes(gateway) || contentLower.includes(gateway)) {
+      // These are payment gateways
+      // Almost always one time payments
+      // Check if renewal date exists in content
+      const hasRenewal =
+        contentLower.includes('next billing') ||
+        contentLower.includes('renewal date') ||
+        contentLower.includes('renews on') ||
+        contentLower.includes('next payment') ||
+        contentLower.includes('auto-renew') ||
+        contentLower.includes('monthly plan') ||
+        contentLower.includes('annual plan')
+
+      if (!hasRenewal) {
+        console.log('ONE TIME PAYMENT GATEWAY:', gateway)
+        return { isSubscription: false }
+      }
+    }
+  }
+
+  // Block 4 - Must have payment success signal
+  const hasSuccess =
+    contentLower.includes('payment successful') ||
+    contentLower.includes('paid successfully') ||
+    contentLower.includes('payment confirmed') ||
+    contentLower.includes('thank you for your payment') ||
+    contentLower.includes('subscription renewed') ||
+    contentLower.includes('subscription active') ||
+    contentLower.includes('your subscription') && 
+    contentLower.includes('renewed') ||
+    contentLower.includes('receipt') ||
+    contentLower.includes('invoice')
+
+  if (!hasSuccess) {
+    console.log('NO SUCCESS SIGNAL:', subject)
+    return { isSubscription: false }
+  }
+
+  // Block 5 - Must have an amount
+  const amountRegex = /₹\s*[\d,]+|rs\.?\s*[\d,]+|inr\s*[\d,]+|\$\s*[\d.]+|usd\s*[\d.]+|[€£]\s*[\d.,]+/i
+  const hasAmount = amountRegex.test(fullContent)
+
+  if (!hasAmount) {
+    console.log('NO AMOUNT FOUND:', subject)
+    return { isSubscription: false }
+  }
+
+  // PASSED ALL CHECKS - Now ask AI
+  console.log('SENDING TO AI:', subject)
+
   const prompt = `
-You are a strict payment receipt detector.
+Analyze this payment email carefully.
 
-Email Subject: ${subject}
-Email From: ${from}
-Email Preview: ${snippet}
+Subject: ${subject}
+From: ${from}
+Full Content: ${fullContent.substring(0, 1500)}
 
-STRICT RULES - return isSubscription TRUE only if:
-1. Email contains an actal payment amount clearly stated
-2. Email confirms payment was SUCCESSFUL not failed
-3. Email shows a RECURRING billing date not one time
-4. All three must be present: amount + success + renewal date
+This email passed basic checks - it has a payment amount
+and success signal. Now determine if it is RECURRING.
 
-Return isSubscription FALSE if:
-- Payment was declined or failed
-- This is a one time purchase no renewal date
-- This is a notification or policy change email
-- This is a marketing or promotional email
-- Amount is not clearly stated in email
-- Email is a Reddit or social media notification
-- No explicit renewal date mentioned
+Answer these questions:
+Q1: Is there a "next billing date" or "renewal date" mentioned?
+Q2: Does it mention "monthly" or "annual" subscription?
+Q3: Is this a one-time purchase or recurring charge?
 
-Return ONLY this JSON no extra text:
+Return ONLY this JSON:
 {
   "isSubscription": true or false,
-  "serviceName": "exact name or null",
-  "amount": exact number from email or null,
+  "serviceName": "exact service name or null",
+  "amount": exact number like 119 or null,
   "currency": "INR or USD or null",
   "receiptDate": "YYYY-MM-DD or null",
   "renewalDate": "YYYY-MM-DD or null"
 }
 
-If ANY doubt return isSubscription false.
-Better to miss than wrong detect.
+Rules:
+- isSubscription TRUE only if recurring payment confirmed
+- amount must be exact number found in email
+- renewalDate must be explicitly stated in email if present (return null if not mentioned)
+- One time course or product purchase = false
 `
 
   try {
     const response = await groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 200,
-      temperature: 0.1
+      max_tokens: 300,
+      temperature: 0
     })
 
     const text = response.choices[0].message.content.trim()
-    
-    // Clean any markdown
     const cleaned = text
       .replace(/```json/g, '')
       .replace(/```/g, '')
       .trim()
 
     const parsed = JSON.parse(cleaned)
+
+    console.log('AI says:', parsed.isSubscription, 'for:', subject)
 
     if (parsed.isSubscription && parsed.serviceName) {
       parsed.category = getCategory(parsed.serviceName)
@@ -144,7 +274,7 @@ Better to miss than wrong detect.
     return parsed
 
   } catch (err) {
-    console.error('AI parsing error:', err.message)
+    console.error('AI error:', err.message)
     return { isSubscription: false }
   }
 }
