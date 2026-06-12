@@ -166,7 +166,12 @@ router.patch('/:id', protect, async (req, res) => {
 
 router.delete('/:id', protect, async (req, res) => {
   try {
-    // Delete receipts first due to foreign key
+    // Delete related records first due to foreign keys
+    await supabase
+      .from('alerts')
+      .delete()
+      .eq('subscription_id', req.params.id);
+
     await supabase
       .from('receipts')
       .delete()

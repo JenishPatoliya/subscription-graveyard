@@ -70,7 +70,28 @@ export const getCategoryColor = (category) => {
     'Security': '#4687FF',
     'Developer Tools': '#F05033',
     'Career': '#0077B5',
+    'Storage': '#FF9500',
     'Other': '#888888'
   }
   return colors[category] || '#888888'
+}
+
+// Get emoji for subscription service name
+export const getServiceEmoji = (name) => {
+  const lower = name?.toLowerCase() || ''
+  if (lower.includes('canva')) return '🎨'
+  if (lower.includes('adobe')) return '🖌️'
+  if (lower.includes('spotify')) return '🎵'
+  if (lower.includes('netflix')) return '🎬'
+  if (lower.includes('notion')) return '📓'
+  if (lower.includes('nordvpn') || lower.includes('vpn')) return '🔒'
+  if (lower.includes('chatgpt') || lower.includes('openai')) return '🤖'
+  if (lower.includes('github')) return '💻'
+  if (lower.includes('google')) return '🔵'
+  if (lower.includes('amazon') || lower.includes('prime')) return '📦'
+  if (lower.includes('linkedin')) return '💼'
+  if (lower.includes('zoom')) return '📹'
+  if (lower.includes('slack')) return '💬'
+  if (lower.includes('dropbox')) return '📁'
+  return '💳'
 }

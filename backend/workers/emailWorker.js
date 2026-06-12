@@ -45,6 +45,43 @@ const processJob = async (job) => {
   let subscriptionsFound = 0
 
   try {
+    // ─── CLEAN SLATE: Delete all existing subscriptions for this specific Gmail address ───
+    // This ensures false positives from previous scans are removed
+    // and each rescan gives fresh, accurate results for this mail account
+    console.log(`Clearing old subscription data for ${gmailAddress}...`)
+
+    // Get existing subscription IDs to delete related alerts and receipts
+    const { data: existingSubs } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('source_gmail', gmailAddress)
+
+    if (existingSubs && existingSubs.length > 0) {
+      const subIds = existingSubs.map(s => s.id)
+
+      // Delete alerts for these subscriptions
+      await supabase
+        .from('alerts')
+        .delete()
+        .in('subscription_id', subIds)
+
+      // Delete receipts for these subscriptions
+      await supabase
+        .from('receipts')
+        .delete()
+        .in('subscription_id', subIds)
+
+      // Delete the subscriptions themselves
+      await supabase
+        .from('subscriptions')
+        .delete()
+        .eq('user_id', userId)
+        .eq('source_gmail', gmailAddress)
+
+      console.log(`Cleared ${existingSubs.length} old subscriptions for ${gmailAddress}`)
+    }
+
     const gmail = gmailService.createGmailClient(
       gmailAccount.access_token,
       gmailAccount.refresh_token
@@ -67,18 +104,17 @@ const processJob = async (job) => {
 
         console.log('Subject:', emailData.subject)
 
-        // Parse with AI
+        // Parse with AI / pattern matching
         const result = await parseEmailForSubscription(emailData)
-        console.log('AI Result:', result.isSubscription, result.serviceName, result.amount)
+        console.log('Result:', result.isSubscription, result.serviceName, result.amount)
 
-        // Only save if valid subscription
+        // Only save if valid subscription detected
+        // Amount can be 0/null for emails that don't mention price (like Canva)
         if (
           result.isSubscription === true &&
-          result.serviceName &&
-          result.amount &&
-          result.amount > 0 &&
-          result.amount < 50000
+          result.serviceName
         ) {
+          const saveAmount = result.amount || 0
           // Check if subscription already exists
           const { data: existing } = await supabase
             .from('subscriptions')
@@ -92,7 +128,7 @@ const processJob = async (job) => {
             await supabase
               .from('subscriptions')
               .update({
-                total_spent: Number(existing.total_spent) + Number(result.amount),
+                total_spent: Number(existing.total_spent) + saveAmount,
                 total_receipts: existing.total_receipts + 1,
                 last_receipt_date: result.receiptDate || existing.last_receipt_date,
                 next_renewal_date: result.renewalDate || existing.next_renewal_date,
@@ -112,7 +148,7 @@ const processJob = async (job) => {
                 user_id: userId,
                 subscription_id: existing.id,
                 gmail_message_id: message.id,
-                amount: result.amount,
+                amount: saveAmount,
                 receipt_date: result.receiptDate,
                 raw_subject: emailData.subject
               })
@@ -128,14 +164,14 @@ const processJob = async (job) => {
                 user_id: userId,
                 source_gmail: gmailAddress,
                 service_name: result.serviceName,
-                amount: result.amount,
+                amount: saveAmount,
                 currency: result.currency || 'INR',
                 category: result.category || 'Other',
                 first_receipt_date: result.receiptDate,
                 last_receipt_date: result.receiptDate,
                 next_renewal_date: result.renewalDate,
                 total_receipts: 1,
-                total_spent: result.amount,
+                total_spent: saveAmount,
                 cancel_url: result.cancelUrl
               })
               .select()
@@ -149,7 +185,7 @@ const processJob = async (job) => {
                 user_id: userId,
                 subscription_id: newSub.id,
                 gmail_message_id: message.id,
-                amount: result.amount,
+                amount: saveAmount,
                 receipt_date: result.receiptDate,
                 raw_subject: emailData.subject
               })
@@ -167,7 +203,7 @@ const processJob = async (job) => {
               }
 
               subscriptionsFound++
-              console.log('SAVED:', result.serviceName, '₹' + result.amount)
+              console.log('SAVED:', result.serviceName, '₹' + saveAmount)
             }
           }
         }

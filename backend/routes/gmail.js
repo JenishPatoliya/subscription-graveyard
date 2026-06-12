@@ -214,6 +214,37 @@ router.post('/rescan', protect, async (req, res) => {
 // User can reconnect anytime
 router.delete('/disconnect/:gmailAddress', protect, async (req, res) => {
   try {
+    // 1. Get the subscription IDs for this user and this email address
+    const { data: subs } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('user_id', req.user.userId)
+      .eq('source_gmail', req.params.gmailAddress);
+
+    if (subs && subs.length > 0) {
+      const subIds = subs.map(s => s.id);
+
+      // 2. Delete alerts for these subscriptions
+      await supabase
+        .from('alerts')
+        .delete()
+        .in('subscription_id', subIds);
+
+      // 3. Delete receipts for these subscriptions
+      await supabase
+        .from('receipts')
+        .delete()
+        .in('subscription_id', subIds);
+
+      // 4. Delete the subscriptions themselves
+      await supabase
+        .from('subscriptions')
+        .delete()
+        .eq('user_id', req.user.userId)
+        .eq('source_gmail', req.params.gmailAddress);
+    }
+
+    // 5. Delete the connected gmail account record
     await supabase
       .from('gmail_accounts')
       .delete()

@@ -35,14 +35,16 @@ const generateToken = (user) => {
 
 // Sets token as browser cookie
 const setCookie = (res, token) => {
+  const isProduction = process.env.NODE_ENV === 'production';
   res.cookie('token', token, {
     // httpOnly means JavaScript cannot read this cookie
     // Protects against XSS attacks
     httpOnly: true,
     // secure means only sent over HTTPS in production
-    secure: process.env.NODE_ENV === 'production',
-    // lax means cookie sent on normal navigation
-    sameSite: 'lax',
+    secure: isProduction,
+    // 'none' required for cross-origin (separate frontend/backend domains)
+    // 'lax' works when same domain
+    sameSite: isProduction ? 'none' : 'lax',
     // Cookie lives for 7 days in milliseconds
     maxAge: 7 * 24 * 60 * 60 * 1000
   });
@@ -162,7 +164,7 @@ router.post('/login', authLimiter, async (req, res) => {
     // Deliberately vague error to not reveal if email exists
     if (!user) {
       return res.status(400).json({
-        error: 'No account found with this email'
+        error: 'Invalid email or password'
       });
     }
 
@@ -171,7 +173,7 @@ router.post('/login', authLimiter, async (req, res) => {
     
     if (!validPassword) {
       return res.status(400).json({
-        error: 'Wrong password. Try again.'
+        error: 'Invalid email or password'
       });
     }
 

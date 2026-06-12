@@ -26,12 +26,6 @@ export default function LoadingSpinner({ message = 'Loading...' }) {
       }}>
         {message}
       </p>
-
-      <style jsx>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   )
 }

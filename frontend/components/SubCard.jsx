@@ -2,7 +2,7 @@
 
 'use client'
 import { useState } from 'react'
-import { getReceiptStatus, getCategoryColor, formatCurrency } from '../lib/utils'
+import { getReceiptStatus, getCategoryColor, formatCurrency, getServiceEmoji } from '../lib/utils'
 
 export default function SubCard({ sub, selected, onClick }) {
   const [hovered, setHovered] = useState(false)
@@ -152,24 +152,4 @@ export default function SubCard({ sub, selected, onClick }) {
       </div>
     </div>
   )
-}
-
-// Helper to get emoji for service
-function getServiceEmoji(name) {
-  const lower = name?.toLowerCase() || ''
-  if (lower.includes('canva')) return '🎨'
-  if (lower.includes('adobe')) return '🖌️'
-  if (lower.includes('spotify')) return '🎵'
-  if (lower.includes('netflix')) return '🎬'
-  if (lower.includes('notion')) return '📓'
-  if (lower.includes('nordvpn') || lower.includes('vpn')) return '🔒'
-  if (lower.includes('chatgpt') || lower.includes('openai')) return '🤖'
-  if (lower.includes('github')) return '💻'
-  if (lower.includes('google')) return '🔵'
-  if (lower.includes('amazon') || lower.includes('prime')) return '📦'
-  if (lower.includes('linkedin')) return '💼'
-  if (lower.includes('zoom')) return '📹'
-  if (lower.includes('slack')) return '💬'
-  if (lower.includes('dropbox')) return '📁'
-  return '💳'
-}
+}

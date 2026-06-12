@@ -7,7 +7,7 @@ require('dotenv').config();
 // BullMQ uses Redis to store jobs
 const connection = {
   host: process.env.UPSTASH_REDIS_HOST,
-  port: process.env.UPSTASH_REDIS_PORT,
+  port: parseInt(process.env.UPSTASH_REDIS_PORT || '6379', 10),
   password: process.env.UPSTASH_REDIS_PASSWORD,
   tls: {}  // Required for Upstash
 };

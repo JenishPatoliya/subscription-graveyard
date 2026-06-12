@@ -3,7 +3,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { subscriptionsAPI } from '../lib/api'
-import { formatCurrency, formatDate, getCategoryColor } from '../lib/utils'
+import { formatCurrency, formatDate, getCategoryColor, getServiceEmoji } from '../lib/utils'
 
 export default function DetailPanel({ sub, onClose, onStatusChange }) {
   const [tab, setTab] = useState('overview')
@@ -410,22 +410,4 @@ export default function DetailPanel({ sub, onClose, onStatusChange }) {
       </div>
     </div>
   )
-}
-
-function getServiceEmoji(name) {
-  const lower = name?.toLowerCase() || ''
-  if (lower.includes('canva')) return '🎨'
-  if (lower.includes('adobe')) return '🖌️'
-  if (lower.includes('spotify')) return '🎵'
-  if (lower.includes('netflix')) return '🎬'
-  if (lower.includes('notion')) return '📓'
-  if (lower.includes('nordvpn') || lower.includes('vpn')) return '🔒'
-  if (lower.includes('chatgpt') || lower.includes('openai')) return '🤖'
-  if (lower.includes('github')) return '💻'
-  if (lower.includes('google')) return '🔵'
-  if (lower.includes('amazon') || lower.includes('prime')) return '📦'
-  if (lower.includes('linkedin')) return '💼'
-  if (lower.includes('zoom')) return '📹'
-  if (lower.includes('dropbox')) return '📁'
-  return '💳'
 }

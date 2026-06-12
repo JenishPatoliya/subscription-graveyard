@@ -67,25 +67,39 @@ const createGmailClient = (accessToken, refreshToken) => {
 // ─── SEARCH RECEIPT EMAILS ───────────────────────────
 
 // Searches Gmail for emails that look like receipts
-// This query only returns billing related emails
-// Never returns personal emails
+// Uses two search passes to catch as many subscription emails as possible
 const searchReceiptEmails = async (gmail) => {
   
-  // Simple clean query that works
-  const query = 'subject:(receipt OR invoice OR payment OR subscription OR renewal OR billing OR renew OR transaction OR order OR bill) newer_than:1y'
+  console.log('Searching Gmail with multiple queries...')
 
-  console.log('Searching Gmail...')
+  // Query 1: Payment/billing keywords (searches full email)
+  const paymentQuery = '(receipt OR invoice OR payment OR subscription OR renewal OR billing OR charged OR membership OR "payment method" OR "next billing" OR "successfully processed" OR "amount paid" OR "plan renewed") newer_than:1y'
 
-  const response = await gmail.users.messages.list({
-    userId: 'me',
-    q: query,
-    maxResults: 50
-  })
+  // Query 2: Known service names in subject (catches test emails)
+  const serviceQuery = 'subject:(netflix OR spotify OR chatgpt OR canva OR "youtube premium" OR "amazon prime" OR hotstar OR adobe OR notion OR github OR linkedin OR zoom OR "google one" OR icloud OR nordvpn) newer_than:1y'
 
-  const messages = response.data.messages || []
-  console.log(`Found ${messages.length} emails to check`)
+  const [paymentRes, serviceRes] = await Promise.all([
+    gmail.users.messages.list({ userId: 'me', q: paymentQuery, maxResults: 200 }),
+    gmail.users.messages.list({ userId: 'me', q: serviceQuery, maxResults: 50 })
+  ])
 
-  return messages
+  const paymentMessages = paymentRes.data.messages || []
+  const serviceMessages = serviceRes.data.messages || []
+
+  // Deduplicate by message ID
+  const seen = new Set()
+  const allMessages = []
+
+  for (const msg of [...paymentMessages, ...serviceMessages]) {
+    if (!seen.has(msg.id)) {
+      seen.add(msg.id)
+      allMessages.push(msg)
+    }
+  }
+
+  console.log(`Found ${paymentMessages.length} payment emails + ${serviceMessages.length} service emails = ${allMessages.length} unique`)
+
+  return allMessages
 }
 
 const decodeBase64Url = (data) => {
@@ -184,7 +198,7 @@ const getBodyText = (payload) => {
 };
 
 // Gets the actual content of a specific email
-// Fetches the full format to decode body text
+// Uses the proper getBodyText helper for correct base64url decoding
 const getEmailContent = async (gmail, messageId) => {
   const response = await gmail.users.messages.get({
     userId: 'me',
@@ -198,58 +212,17 @@ const getEmailContent = async (gmail, messageId) => {
   const date = headers.find(h => h.name === 'Date')?.value || ''
   const snippet = response.data.snippet || ''
 
-  // Extract full body text
-  let fullBody = ''
+  // Extract body using the proper helper that handles
+  // base64url decoding, HTML stripping, and nested MIME parts
+  const fullBody = getBodyText(response.data.payload)
 
-  const extractText = (payload) => {
-    if (!payload) return
-
-    // Direct body data
-    if (payload.body && payload.body.data) {
-      try {
-        const decoded = Buffer.from(
-          payload.body.data,
-          'base64'
-        ).toString('utf-8')
-        fullBody += decoded + ' '
-      } catch (e) {}
-    }
-
-    // Check parts
-    if (payload.parts) {
-      for (const part of payload.parts) {
-        if (
-          part.mimeType === 'text/plain' ||
-          part.mimeType === 'text/html'
-        ) {
-          if (part.body && part.body.data) {
-            try {
-              const decoded = Buffer.from(
-                part.body.data,
-                'base64'
-              ).toString('utf-8')
-              fullBody += decoded + ' '
-            } catch (e) {}
-          }
-        }
-        // Nested parts
-        if (part.parts) {
-          extractText(part)
-        }
-      }
-    }
-  }
-
-  extractText(response.data.payload)
-
-  // Clean HTML tags
+  // Clean and truncate for AI processing
   const cleanBody = fullBody
-    .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim()
-    .substring(0, 2000)
+    .substring(0, 3000)
 
   return {
     subject,

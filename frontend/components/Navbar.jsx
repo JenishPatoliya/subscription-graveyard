@@ -2,20 +2,10 @@
 
 'use client'
 import { useRouter, usePathname } from 'next/navigation'
-import { authAPI } from '../lib/api'
 
 export default function Navbar({ user }) {
   const router = useRouter()
   const pathname = usePathname()
-
-  const handleLogout = async () => {
-    try {
-      await authAPI.logout()
-      router.push('/')
-    } catch (err) {
-      console.error('Logout error:', err)
-    }
-  }
 
   const navItems = [
     { path: '/dashboard', label: '📊 Dashboard' },
