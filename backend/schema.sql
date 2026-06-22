@@ -98,3 +98,9 @@ CREATE POLICY "Service role full access on subscriptions" ON subscriptions FOR A
 CREATE POLICY "Service role full access on receipts" ON receipts FOR ALL USING (true);
 CREATE POLICY "Service role full access on alerts" ON alerts FOR ALL USING (true);
 CREATE POLICY "Service role full access on alert_preferences" ON alert_preferences FOR ALL USING (true);
+
+-- ─── BLOCK 9: ML ENHANCEMENT COLUMNS ────────────────
+-- Run this to add ML model output columns to subscriptions
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS usage_score INTEGER DEFAULT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS usage_label TEXT DEFAULT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS cluster_id INTEGER DEFAULT NULL;

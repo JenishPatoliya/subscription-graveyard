@@ -3,7 +3,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { authAPI, subscriptionsAPI, alertsAPI } from '../../lib/api'
+import { authAPI, subscriptionsAPI, alertsAPI, insightsAPI } from '../../lib/api'
 import { formatCurrency } from '../../lib/utils'
 import Navbar from '../../components/Navbar'
 import StatCard from '../../components/StatCard'
@@ -20,6 +20,7 @@ export default function DashboardPage() {
   const [selected, setSelected] = useState(null)
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [healthScore, setHealthScore] = useState(null)
 
 
   // Load everything on mount
@@ -36,6 +37,14 @@ export default function DashboardPage() {
 
         // Load alerts
         const alertData = await alertsAPI.getAll()
+
+        // Load AI health score (non-blocking)
+        try {
+          const insightsData = await insightsAPI.get()
+          setHealthScore(insightsData?.insights?.healthScore || null)
+        } catch (e) {
+          // ML service may not be running, ignore
+        }
         setAlerts(alertData.upcoming || [])
 
       } catch (err) {
@@ -118,7 +127,7 @@ export default function DashboardPage() {
         {/* Stats */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(5, 1fr)',
           gap: 12,
           marginBottom: 24
         }}>
@@ -149,6 +158,16 @@ export default function DashboardPage() {
             sub="if all subscriptions continue"
             color="rgba(255,255,255,0.6)"
           />
+          <div onClick={() => router.push('/dashboard/insights')} style={{ cursor: 'pointer' }}>
+            <StatCard
+              label="🧠 AI Health Score"
+              value={healthScore !== null ? `${healthScore}/100` : '—'}
+              sub="click for full AI analysis"
+              color="#7C4DFF"
+              bg="rgba(124,77,255,0.06)"
+              border="rgba(124,77,255,0.18)"
+            />
+          </div>
         </div>
 
         {/* Filter tabs */}

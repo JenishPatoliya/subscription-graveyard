@@ -34,7 +34,7 @@ export default function SignupPage() {
       await authAPI.signup(name, email, password)
       router.push('/connect-gmail')
     } catch (err) {
-      setError(err.response?.data?.error || 'Signup failed. Try again.')
+      setError(err.response?.data?.detail || err.response?.data?.error || 'Signup failed. Try again.')
     } finally {
       setLoading(false)
     }

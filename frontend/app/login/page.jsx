@@ -37,7 +37,7 @@ export default function LoginPage() {
       }
 
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Try again.')
+      setError(err.response?.data?.detail || err.response?.data?.error || 'Login failed. Try again.')
     } finally {
       setLoading(false)
     }

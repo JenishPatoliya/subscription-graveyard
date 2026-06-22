@@ -9,6 +9,7 @@ export default function Navbar({ user }) {
 
   const navItems = [
     { path: '/dashboard', label: '📊 Dashboard' },
+    { path: '/dashboard/insights', label: '🧠 AI Insights' },
     { path: '/dashboard/alerts', label: '🔔 Alerts' },
     { path: '/dashboard/report', label: '📈 Report' },
     { path: '/dashboard/settings', label: '⚙️ Settings' }

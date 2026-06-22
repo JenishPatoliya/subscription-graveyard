@@ -125,16 +125,42 @@ export default function SubCard({ sub, selected, onClick }) {
         alignItems: 'center'
       }}>
         {/* Status badge */}
-        <div style={{
-          background: status.bg,
-          border: `1px solid ${status.border}`,
-          borderRadius: 20,
-          padding: '4px 12px',
-          fontSize: 10,
-          color: status.color,
-          fontWeight: 700
-        }}>
-          {status.emoji} {status.label}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div style={{
+            background: status.bg,
+            border: `1px solid ${status.border}`,
+            borderRadius: 20,
+            padding: '4px 12px',
+            fontSize: 10,
+            color: status.color,
+            fontWeight: 700
+          }}>
+            {status.emoji} {status.label}
+          </div>
+          {sub.usage_label && (
+            <div style={{
+              background: sub.cluster_id === 0 ? 'rgba(0,230,118,0.08)' :
+                          sub.cluster_id === 1 ? 'rgba(66,165,245,0.08)' :
+                          sub.cluster_id === 2 ? 'rgba(255,184,0,0.08)' :
+                          'rgba(255,68,85,0.08)',
+              border: `1px solid ${
+                sub.cluster_id === 0 ? 'rgba(0,230,118,0.25)' :
+                sub.cluster_id === 1 ? 'rgba(66,165,245,0.25)' :
+                sub.cluster_id === 2 ? 'rgba(255,184,0,0.25)' :
+                'rgba(255,68,85,0.25)'
+              }`,
+              borderRadius: 20,
+              padding: '4px 10px',
+              fontSize: 9,
+              color: sub.cluster_id === 0 ? '#00E676' :
+                     sub.cluster_id === 1 ? '#42A5F5' :
+                     sub.cluster_id === 2 ? '#FFB800' : '#FF4455',
+              fontWeight: 600,
+              letterSpacing: 0.5
+            }}>
+              🧠 {sub.usage_label}
+            </div>
+          )}
         </div>
 
         {/* Last receipt */}

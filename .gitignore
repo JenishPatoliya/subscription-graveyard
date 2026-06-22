@@ -3,3 +3,9 @@ node_modules
 .env.local
 .DS_Store
 .next
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.log
+*.bak

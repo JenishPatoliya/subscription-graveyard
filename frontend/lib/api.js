@@ -140,4 +140,14 @@ export const settingsAPI = {
   }
 }
 
+// ─── INSIGHTS API CALLS ──────────────────────────────
+
+export const insightsAPI = {
+
+  get: async () => {
+    const response = await api.get('/api/insights')
+    return response.data
+  }
+}
+
 export default api

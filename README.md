@@ -3,21 +3,20 @@
 > An AI-powered, auto-tracking subscription manager that scans your email receipts, flags active subscriptions, sends renewal alerts, and helps you bury unused expenses forever.
 
 [![Next.js](https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-20-green?style=for-the-badge&logo=node.js)](https://nodejs.org/)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-Database-blueviolet?style=for-the-badge&logo=supabase)](https://supabase.com/)
-[![BullMQ](https://img.shields.io/badge/BullMQ-Queue_Worker-red?style=for-the-badge&logo=redis)](https://bullmq.io/)
-[![TailwindCSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
 
 ---
 
 ## ✨ Features
 
-- **📧 Multi-Account Gmail Scanning**: Link multiple Gmail accounts securely via OAuth2 to auto-scan for billing receipts.
-- **🤖 Intelligent Parsing Engine**: Hybrid Regex & AI matching that categorizes subscriptions, extracts payment amounts, currencies, and isolates marketing promos from actual receipts.
+- **📧 Multi-Account Gmail Scanning**: Link multiple Gmail accounts securely via Google OAuth 2.0 to scan for billing receipts.
+- **🤖 Intelligent Parsing Engine**: Hybrid rule-based & AI matching that categorizes subscriptions, extracts payment amounts/currencies, and isolates marketing promos from actual receipts.
 - **📊 Interactive Dashboard**: A sleek, dark-themed user interface featuring glassmorphic cards, receipt progress, and automated analytics.
-- **⏰ Smart Alerts**: Calculates next renewal dates automatically and creates notification logs before charges occur.
-- **❌ Instant Burial (Unsubscribe)**: Access direct unsubscribe/cancellation links for detected services right from your dashboard.
-- **🔍 Diagnostic CLI**: Built-in command-line tools to monitor active users, Gmail connections, and subscriptions in real-time.
+- **⏰ Smart Alerts**: Calculates next renewal dates automatically and creates notification logs 3 days before charges occur.
+- **❌ Instant Cancellation (Burial)**: Access direct cancel/unsubscribe links for detected services right from your dashboard.
+- **🧠 5 ML Models**: In-depth analytical reports and predictions about your spending patterns.
 
 ---
 
@@ -26,10 +25,10 @@
 | Component | Technology | Description |
 | :--- | :--- | :--- |
 | **Frontend** | React, Next.js 14, CSS Modules | Glassmorphism, animations, responsive layout |
-| **Backend** | Node.js, Express | REST APIs, authentication routing, session controllers |
+| **Backend** | Python 3.11+, FastAPI, Uvicorn | REST APIs, authentication routing, async email scanner |
 | **Database** | Supabase (PostgreSQL) | Users, subscriptions, receipts, alerts, and OAuth tokens |
-| **Queue Broker** | Upstash Redis & BullMQ | Asynchronous and isolated background worker queue |
-| **Services** | Gmail API, OpenAI / LLM | Fetching messages, email extraction, and NLP fallback |
+| **ML Engine** | scikit-learn, XGBoost, Groq LLM | Anomaly detection, clustering, spending predictions, and AI recommendations |
+| **Services** | Gmail API, Google OAuth 2.0 | Read-only receipts scanning |
 
 ---
 
@@ -38,20 +37,30 @@
 ```text
 subscription-graveyard/
 ├── backend/
-│   ├── config/            # Supabase & Redis configuration
-│   ├── routes/            # Auth, Gmail OAuth, and Subscriptions routes
-│   ├── services/          # AI Service, BullMQ Manager, Gmail Client
-│   ├── workers/           # Asynchronous email scanning worker task
-│   ├── check-db.js        # Command-line database inspector
-│   ├── index.js           # Main Express server entrypoint
-│   └── package.json
-├── frontend/
-│   ├── app/               # Next.js App Router (Dashboard, Scanning, Login)
-│   ├── components/        # Reusable UI elements (Navbar, Cards, Loaders)
-│   ├── lib/               # Common utilities and helper functions
-│   └── package.json
-└── README.md              # Project documentation
+│   ├── config/            # Supabase & settings config
+│   ├── middleware/        # JWT Authentication middleware
+│   ├── ml/                # 5 ML model implementations
+│   ├── routes/            # Auth, Gmail, Subscriptions, Insights, Alerts routes
+│   ├── services/          # Groq AI, Gmail Client, Scheduler, Email Scanner
+│   ├── main.py            # Main FastAPI server entrypoint
+│   ├── schema.sql         # Supabase Database schema SQL file
+│   └── requirements.txt   # Python dependencies
+└── frontend/
+    ├── app/               # Next.js App Router (Dashboard, Login, Connect Gmail)
+    ├── components/        # Reusable UI elements (Navbar, Cards, StatCard)
+    ├── lib/               # Common API utilities
+    └── package.json       # Next.js dependencies
 ```
+
+---
+
+## 🧠 Machine Learning Engine (5 Models)
+
+1.  **Isolation Forest (Anomaly Detection)**: Scans subscription records to flag suspicious price spikes or duplicate charges.
+2.  **XGBoost Regressor (Spending Prediction)**: Trains on your historical billing receipt sequences to forecast your subscription expenses for the next 3 months.
+3.  **K-Means (Subscription Clustering)**: Clusters subscriptions based on cost and frequency, assigning a usage score to help detect candidate subscriptions to cancel.
+4.  **TF-IDF + Random Forest Classifier**: Trains on your billing subject lines to help optimize filters that isolate receipts from promotional spam.
+5.  **Llama 3 AI Insights (Groq LLM)**: Synthesizes the output of all other ML models to write personalized, actionable recommendations to reduce your monthly expenses.
 
 ---
 
@@ -61,10 +70,10 @@ subscription-graveyard/
 
 Ensure you have the following installed:
 - [Node.js](https://nodejs.org/) (v18+)
-- [Git](https://git-scm.com/)
+- [Python](https://www.python.org/) (v3.11+)
 - A [Supabase](https://supabase.com/) account
-- A Redis instance (e.g. [Upstash](https://upstash.com/))
 - A Google Cloud Developer Project with Gmail API enabled (for OAuth credentials)
+- A [Groq API Key](https://wow.groq.com/) for Llama 3 processing
 
 ---
 
@@ -77,31 +86,38 @@ cd subscription-graveyard
 ```
 
 #### 2. Configure the Backend
-Navigate to the `backend` directory and install dependencies:
+Navigate to the `backend` directory, create a Python virtual environment, install dependencies:
 ```bash
 cd backend
-npm install
+python -m venv venv
+.\venv\Scripts\activate   # On Windows
+source venv/bin/activate  # On macOS/Linux
+pip install -r requirements.txt
 ```
 
 Create a `.env` file in the `backend/` folder and populate it with your environment variables:
 ```env
-PORT=5000
-NODE_ENV=development
+PORT=8000
+FRONTEND_URL=http://localhost:3000
+BACKEND_URL=http://localhost:8000
 
 # Supabase Configurations
 SUPABASE_URL=your_supabase_project_url
-SUPABASE_SERVICE_KEY=your_supabase_service_role_key
-
-# Redis Configuration
-REDIS_URL=rediss://default:your_upstash_redis_password@your_upstash_domain.upstash.io:6379
+SUPABASE_SERVICE_KEY=your_supabase_service_role_key   # Secret service_role key
 
 # Google OAuth Credentials
 GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:5000/api/gmail/callback
 
 # Session JWT Secret
 JWT_SECRET=your_jwt_secret_key
+
+# Groq API Key
+GROQ_API_KEY=your_groq_api_key
+
+# Demo Account
+DEMO_EMAIL=demo@subscriptiongraveyard.com
+DEMO_PASSWORD=demo123
 ```
 
 #### 3. Configure the Frontend
@@ -113,7 +129,7 @@ npm install
 
 Create a `.env.local` file in the `frontend/` folder:
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
 ---
@@ -124,26 +140,15 @@ You need to run both the frontend and backend servers.
 
 #### Start the Backend Server (from the `backend/` folder)
 ```bash
-npm start
+.\venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
-*This starts the Express server on port `5000` and initializes the background BullMQ queue worker.*
+*This starts the FastAPI server on port `8000`.*
 
 #### Start the Frontend Server (from the `frontend/` folder)
 ```bash
 npm run dev
 ```
 *This starts the Next.js development server on [http://localhost:3000](http://localhost:3000).*
-
----
-
-## 📊 Database CLI Tool
-
-To inspect users, active connections, and scanned subscription details directly from your terminal:
-
-```bash
-cd backend
-node check-db.js
-```
 
 ---
 
