@@ -15,7 +15,13 @@ export default function StatCard({
       borderRadius: 18,
       padding: '20px 22px',
       position: 'relative',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between',
+      minHeight: 130,
+      boxSizing: 'border-box'
     }}>
       {/* Background glow */}
       <div style={{
@@ -29,33 +35,37 @@ export default function StatCard({
         pointerEvents: 'none'
       }} />
 
-      <div style={{
-        fontSize: 9,
-        letterSpacing: 2.5,
-        color: 'rgba(255,255,255,0.3)',
-        fontWeight: 700,
-        marginBottom: 12
-      }}>
-        {label.toUpperCase()}
-      </div>
+      <div>
+        <div style={{
+          fontSize: 9,
+          letterSpacing: 2.5,
+          color: 'rgba(255,255,255,0.3)',
+          fontWeight: 700,
+          marginBottom: 12
+        }}>
+          {label.toUpperCase()}
+        </div>
 
-      <div style={{
-        fontFamily: "'Syne', sans-serif",
-        fontSize: 28,
-        fontWeight: 900,
-        color: color,
-        marginBottom: 4,
-        lineHeight: 1
-      }}>
-        {value}
+        <div style={{
+          fontFamily: "'Syne', sans-serif",
+          fontSize: 28,
+          fontWeight: 900,
+          color: color,
+          marginBottom: 4,
+          lineHeight: 1
+        }}>
+          {value}
+        </div>
       </div>
 
       <div style={{
         fontSize: 10,
-        color: 'rgba(255,255,255,0.25)'
+        color: 'rgba(255,255,255,0.25)',
+        marginTop: 8,
+        lineHeight: 1.4
       }}>
         {sub}
       </div>
     </div>
   )
-}
+}

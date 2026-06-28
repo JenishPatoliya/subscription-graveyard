@@ -158,7 +158,7 @@ export default function DashboardPage() {
             sub="if all subscriptions continue"
             color="rgba(255,255,255,0.6)"
           />
-          <div onClick={() => router.push('/dashboard/insights')} style={{ cursor: 'pointer' }}>
+          <div onClick={() => router.push('/dashboard/insights')} style={{ cursor: 'pointer', height: '100%' }}>
             <StatCard
               label="🧠 AI Health Score"
               value={healthScore !== null ? `${healthScore}/100` : '—'}

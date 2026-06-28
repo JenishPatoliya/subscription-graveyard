@@ -67,7 +67,7 @@ export const gmailAPI = {
 
   disconnect: async (gmailAddress) => {
     const response = await api.delete(
-      `/api/gmail/disconnect/${gmailAddress}`
+      `/api/gmail/disconnect/${encodeURIComponent(gmailAddress)}`
     )
     return response.data
   }

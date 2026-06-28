@@ -284,37 +284,114 @@ export default function DetailPanel({ sub, onClose, onStatusChange }) {
               </div>
             )}
 
-            {/* Renewal info */}
-            {sub.next_renewal_date && (
+            {/* Single receipt warning */}
+            {sub.first_receipt_date && sub.last_receipt_date &&
+             sub.first_receipt_date === sub.last_receipt_date &&
+             sub.total_receipts <= 1 && (
               <div style={{
-                background: 'rgba(255,184,0,0.06)',
-                border: '1px solid rgba(255,184,0,0.18)',
-                borderRadius: 12,
-                padding: '14px 16px',
-                display: 'flex',
-                gap: 10,
-                alignItems: 'center'
+                background: 'rgba(124,77,255,0.07)',
+                border: '1px solid rgba(124,77,255,0.2)',
+                borderRadius: 14,
+                padding: '16px',
+                marginBottom: 16
               }}>
-                <span style={{ fontSize: 20 }}>⏰</span>
-                <div>
-                  <div style={{
-                    fontSize: 10,
-                    color: '#FFB800',
-                    letterSpacing: 2,
-                    fontWeight: 800
-                  }}>
-                    UPCOMING CHARGE
-                  </div>
-                  <div style={{
-                    fontSize: 13,
-                    color: 'rgba(255,255,255,0.7)',
-                    marginTop: 2
-                  }}>
-                    {formatCurrency(sub.amount)} on {formatDate(sub.next_renewal_date)}
-                  </div>
+                <div style={{
+                  fontSize: 10,
+                  color: '#7C4DFF',
+                  letterSpacing: 2,
+                  fontWeight: 800,
+                  marginBottom: 8
+                }}>
+                  🔍 ONLY 1 RECEIPT FOUND
+                </div>
+                <div style={{
+                  fontSize: 12,
+                  color: 'rgba(255,255,255,0.5)',
+                  lineHeight: 1.7
+                }}>
+                  We found only one receipt email for {sub.service_name}.
+                  This could be a one-time purchase, a free trial,
+                  or the subscription may no longer be active.
+                </div>
+                <div style={{
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.25)',
+                  marginTop: 8
+                }}>
+                  Check your {sub.service_name} account to verify if
+                  this is still an active subscription.
                 </div>
               </div>
             )}
+
+            {/* Renewal info — only show as "upcoming" if date is in the future */}
+            {sub.next_renewal_date && (() => {
+              const renewalDate = new Date(sub.next_renewal_date)
+              const today = new Date()
+              today.setHours(0, 0, 0, 0)
+              const isFuture = renewalDate >= today
+
+              return isFuture ? (
+                <div style={{
+                  background: 'rgba(255,184,0,0.06)',
+                  border: '1px solid rgba(255,184,0,0.18)',
+                  borderRadius: 12,
+                  padding: '14px 16px',
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'center'
+                }}>
+                  <span style={{ fontSize: 20 }}>⏰</span>
+                  <div>
+                    <div style={{
+                      fontSize: 10,
+                      color: '#FFB800',
+                      letterSpacing: 2,
+                      fontWeight: 800
+                    }}>
+                      UPCOMING CHARGE
+                    </div>
+                    <div style={{
+                      fontSize: 13,
+                      color: 'rgba(255,255,255,0.7)',
+                      marginTop: 2
+                    }}>
+                      {formatCurrency(sub.amount)} on {formatDate(sub.next_renewal_date)}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  background: 'rgba(255,68,85,0.06)',
+                  border: '1px solid rgba(255,68,85,0.18)',
+                  borderRadius: 12,
+                  padding: '14px 16px',
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'center'
+                }}>
+                  <span style={{ fontSize: 20 }}>📅</span>
+                  <div>
+                    <div style={{
+                      fontSize: 10,
+                      color: '#FF4455',
+                      letterSpacing: 2,
+                      fontWeight: 800
+                    }}>
+                      RENEWAL DATE PASSED
+                    </div>
+                    <div style={{
+                      fontSize: 13,
+                      color: 'rgba(255,255,255,0.7)',
+                      marginTop: 2
+                    }}>
+                      Last known renewal was {formatDate(sub.next_renewal_date)}.
+                      Check if still active.
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         )}
 

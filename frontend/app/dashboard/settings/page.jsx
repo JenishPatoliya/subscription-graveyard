@@ -155,7 +155,6 @@ export default function SettingsPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <GhostButton label="Edit Profile" onClick={() => {}} />
             <DangerButton label="Sign Out" onClick={handleLogout} />
           </div>
         </SettingsCard>

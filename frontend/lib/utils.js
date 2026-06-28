@@ -8,10 +8,21 @@ export const formatCurrency = (amount) => {
 // Get receipt status info
 export const getReceiptStatus = (receiptStatus, daysUntilRenewal) => {
 
+  // Renewal date has passed (negative days = past date)
+  if (daysUntilRenewal !== null && daysUntilRenewal < 0) {
+    return {
+      label: 'Renewal Passed',
+      color: '#FF4455',
+      bg: 'rgba(255,68,85,0.12)',
+      border: 'rgba(255,68,85,0.3)',
+      emoji: '📅'
+    }
+  }
+
   // Renewing very soon
   if (daysUntilRenewal !== null && daysUntilRenewal <= 5) {
     return {
-      label: `Renews in ${daysUntilRenewal} days`,
+      label: `Renews in ${daysUntilRenewal}d`,
       color: '#FF4455',
       bg: 'rgba(255,68,85,0.12)',
       border: 'rgba(255,68,85,0.3)',

@@ -121,19 +121,25 @@ export default function SubCard({ sub, selected, onClick }) {
       {/* Bottom row */}
       <div style={{
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
+        flexDirection: 'column',
+        gap: 10
       }}>
-        {/* Status badge */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {/* Badges row */}
+        <div style={{
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+          flexWrap: 'wrap'
+        }}>
           <div style={{
             background: status.bg,
             border: `1px solid ${status.border}`,
             borderRadius: 20,
-            padding: '4px 12px',
+            padding: '4px 10px',
             fontSize: 10,
             color: status.color,
-            fontWeight: 700
+            fontWeight: 700,
+            whiteSpace: 'nowrap'
           }}>
             {status.emoji} {status.label}
           </div>
@@ -156,20 +162,22 @@ export default function SubCard({ sub, selected, onClick }) {
                      sub.cluster_id === 1 ? '#42A5F5' :
                      sub.cluster_id === 2 ? '#FFB800' : '#FF4455',
               fontWeight: 600,
-              letterSpacing: 0.5
+              letterSpacing: 0.5,
+              whiteSpace: 'nowrap'
             }}>
               🧠 {sub.usage_label}
             </div>
           )}
         </div>
 
-        {/* Last receipt */}
+        {/* Receipt date */}
         <div style={{
           fontSize: 10,
           color: 'rgba(255,255,255,0.25)'
         }}>
-          Receipt: {sub.last_receipt_date
+          Last receipt: {sub.last_receipt_date
             ? new Date(sub.last_receipt_date).toLocaleDateString('en-IN', {
+                day: 'numeric',
                 month: 'short',
                 year: 'numeric'
               })

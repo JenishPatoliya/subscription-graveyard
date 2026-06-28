@@ -171,6 +171,8 @@ async def rescan(background_tasks: BackgroundTasks, user: dict = Depends(get_cur
 @router.delete("/disconnect/{gmail_address}")
 async def disconnect_gmail(gmail_address: str, user: dict = Depends(get_current_user)):
     try:
+        print(f"Disconnecting Gmail: {gmail_address} for user: {user['userId']}")
+
         # Get subscription IDs for this Gmail
         subs_result = supabase.table("subscriptions") \
             .select("id") \
@@ -181,8 +183,15 @@ async def disconnect_gmail(gmail_address: str, user: dict = Depends(get_current_
         subs = subs_result.data or []
         if subs:
             sub_ids = [s["id"] for s in subs]
-            supabase.table("alerts").delete().in_("subscription_id", sub_ids).execute()
-            supabase.table("receipts").delete().in_("subscription_id", sub_ids).execute()
+            print(f"Deleting {len(sub_ids)} subscriptions and related data...")
+            try:
+                supabase.table("alerts").delete().in_("subscription_id", sub_ids).execute()
+            except Exception as e:
+                print(f"[WARNING] Alerts delete failed (non-fatal): {e}")
+            try:
+                supabase.table("receipts").delete().in_("subscription_id", sub_ids).execute()
+            except Exception as e:
+                print(f"[WARNING] Receipts delete failed (non-fatal): {e}")
             supabase.table("subscriptions").delete() \
                 .eq("user_id", user["userId"]) \
                 .eq("source_gmail", gmail_address).execute()
@@ -191,7 +200,9 @@ async def disconnect_gmail(gmail_address: str, user: dict = Depends(get_current_
             .eq("user_id", user["userId"]) \
             .eq("gmail_address", gmail_address).execute()
 
+        print(f"Gmail {gmail_address} disconnected successfully")
         return {"message": "Gmail disconnected successfully"}
 
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to disconnect")
+    except Exception as e:
+        print(f"[ERROR] Disconnect Gmail failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to disconnect: {str(e)}")
